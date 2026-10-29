@@ -352,7 +352,7 @@
       var s = section("Modifica " + inst.name, "Il simbolo non si può cambiare: per una quotazione diversa rimuovi lo strumento e aggiungilo di nuovo.");
       s.body.appendChild(instrumentForm(inst, function (data) { return Backend.manage("update", { id: id, instrument: data }); }, "Salva modifiche"));
       var rm = actionButton("Rimuovi dall'elenco", function () {
-        if (!confirm("Rimuovere " + inst.name + "? Verranno eliminati anche i suoi dati e lo storico delle analisi.")) return;
+        if (!confirm("Rimuovere " + inst.name + "? Verranno eliminati anche i suoi dati e la sua analisi.")) return;
         return Backend.manage("remove", { id: id }).then(function (res) {
           if (!res.ok) throw new Error(res.error || "Rimozione non riuscita");
           clearCache(); toast("Rimosso.", "ok"); location.hash = "#/";
@@ -466,19 +466,18 @@
 
   function pageDetail(id) {
     var base = "analysis/" + id + "/";
-    return Promise.all([load("instruments.json"), load("quotes/" + id + ".json"), load(base + "latest.json"), load("news.json"),
-      load("events.json"), load("overview.json")]).then(function (r) {
-      var inst = ((r[0] && r[0].instruments) || []).filter(function (i) { return i.id === id; })[0];
+    return Promise.all([load("overview.json"), load("quotes/" + id + ".json"), load(base + "latest.json"), load("news.json"),
+      load("events.json")]).then(function (r) {
+      var inst = (((r[0] || {}).instruments) || []).filter(function (x) { return x.id === id; })[0];
       if (!inst) return [empty("Titolo non trovato."), h("a", { href: "#/" }, "← I miei titoli")];
       var q = r[1], rec = r[2], newsMeta = r[3] || {}, evs = (r[4] && r[4].items) || [];
-      var row = (((r[5] || {}).instruments) || []).filter(function (x) { return x.id === id; })[0] || {};
       var news = (newsMeta.items || []).filter(function (n) { return n.instrument_ids.indexOf(id) >= 0; }).sort(byDate);
       var today = new Date().toISOString().slice(0, 10);
       var events = evs.filter(function (e) { return eventIds(e).indexOf(id) >= 0 && e.date >= today; });
       var a = (rec && rec.analysis) || {};
       var out = [h("p", { class: "crumbs" }, h("a", { href: "#/" }, "← I miei titoli")),
         h("header", { class: "page-head" },
-          h("div", null, h("h1", null, row.short || inst.name), h("p", { class: "tiny muted" }, (inst.type === "etf" ? "ETF" : "Azione") + " · " + inst.symbol)),
+          h("div", null, h("h1", null, inst.short || inst.name), h("p", { class: "tiny muted" }, (inst.type === "etf" ? "ETF" : "Azione") + " · " + inst.symbol)),
           refreshAction({ components: ["prices", "funds", "events", "news", "analysis"], instrument: id }, "Aggiorna", "ghost"))];
       out.push(trendCard(q, a));
       var ns = section("Notizie");
