@@ -250,13 +250,16 @@
         ? ["Per leggere i dati dal repository privato inserisci il token GitHub nelle ", h("a", { href: "#/impostazioni" }, "Impostazioni"), "."]
         : ["Riprova più tardi o controlla le ", h("a", { href: "#/impostazioni" }, "Impostazioni"), "."]));
   }
-  var OUTLOOK = { favorevoli: "up", in_peggioramento: "down", miste: "mixed" };
+  // Previsione: direzione (freccia e colore) e quanto è sicura. Senza direzione = previsione incerta.
+  var DIR = { rialzo: ["↑", "al rialzo", "up"], ribasso: ["↓", "al ribasso", "down"] };
+  var SICUREZZA = { bassa: "incerta", media: "abbastanza sicura", alta: "più sicura" };
   function instRow(r) {
     return h("a", { class: "inst", href: "#/strumento/" + encodeURIComponent(r.id) },
       h("div", { class: "inst-main" },
         h("div", { class: "inst-name" }, r.short || r.name, r.demo ? badge("DEMO", "demo") : null),
         h("div", { class: "tiny muted" }, (r.type === "etf" ? "ETF" : "Azione"),
-          r.outlook && r.outlook !== "non_valutabile" ? h("span", { class: "outlook-word " + (OUTLOOK[r.outlook] || "") }, " · " + r.outlook_label.replace(/^(Prospettive|Tendenza) /, function (m) { return m.toLowerCase(); }) + (r.outlook_conf ? " (fiducia " + r.outlook_conf + ")" : "")) : null)),
+          r.outlook_label ? h("span", { class: "outlook-word " + (DIR[r.outlook] ? DIR[r.outlook][2] : "mixed") },
+            " · " + (DIR[r.outlook] ? DIR[r.outlook][0] + " " + DIR[r.outlook][1] + (SICUREZZA[r.outlook_conf] ? ", " + SICUREZZA[r.outlook_conf] : "") : "previsione incerta")) : null)),
       h("div", { class: "inst-px" },
         r.price == null ? h("div", { class: "tiny muted" }, "prezzo n.d.") : pctEl(r.daily && r.daily.pct),
         h("div", { class: "tiny muted" }, r.m1 ? "1 mese " + L.fmtPct(r.m1.pct) : "")));
@@ -467,10 +470,10 @@
     if (!rec || (!p.spiegazione && !hasScen)) {
       s.body.appendChild(empty(rec ? "Informazioni insufficienti per una previsione ragionata." : "Previsione non ancora disponibile."));
     } else {
-      var ARROW = { rialzo: "↑ ", laterale: "→ ", ribasso: "↓ " };
-      s.body.appendChild(h("div", { class: "outlook-head " + (OUTLOOK[p.valutazione] || "") },
-        h("strong", null, (ARROW[p.direzione] || "") + (p.valutazione_label || "Prospettive non valutabili")),
-        h("div", { class: "tiny muted" }, [p.fiducia ? "fiducia " + p.fiducia : null, p.orizzonte].filter(Boolean).join(" · "))));
+      var d = DIR[p.direzione];
+      s.body.appendChild(h("div", { class: "outlook-head " + (d ? d[2] : "mixed") },
+        h("strong", null, d ? d[0] + " Previsione " + d[1] : "Previsione incerta"),
+        h("div", { class: "tiny muted" }, [d && SICUREZZA[p.fiducia] ? SICUREZZA[p.fiducia] : null, p.orizzonte].filter(Boolean).join(" · "))));
       if (p.spiegazione) clampText(p.spiegazione, "small").forEach(function (n) { s.body.appendChild(n); });
       if (p.fattori_chiave && p.fattori_chiave.length) {
         s.body.appendChild(h("div", { class: "keys" }, h("div", { class: "tiny muted" }, "Dipende soprattutto da"),

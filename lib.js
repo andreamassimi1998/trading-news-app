@@ -13,13 +13,6 @@
     return u.href;
   }
 
-  /** Escape per i rari casi in cui serve una stringa HTML (la dashboard usa textContent). */
-  function escapeHtml(s) {
-    return String(s == null ? "" : s)
-      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-  }
-
   var nf2 = new Intl.NumberFormat("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   function fmtPrice(v, currency) {
@@ -32,11 +25,6 @@
   function fmtPct(v) {
     if (typeof v !== "number" || !isFinite(v)) return "—";
     return (v > 0 ? "+" : v < 0 ? "−" : "") + nf2.format(Math.abs(v)) + "%";
-  }
-
-  function fmtAbs(v) {
-    if (typeof v !== "number" || !isFinite(v)) return "—";
-    return (v > 0 ? "+" : v < 0 ? "−" : "") + nf2.format(Math.abs(v));
   }
 
   function trend(v) {
@@ -146,7 +134,7 @@
     return bars.filter(function (b) { return b.date >= cut && typeof b.close === "number"; });
   }
 
-  var api = { safeUrl: safeUrl, escapeHtml: escapeHtml, fmtPrice: fmtPrice, fmtPct: fmtPct, fmtAbs: fmtAbs,
+  var api = { safeUrl: safeUrl, fmtPrice: fmtPrice, fmtPct: fmtPct,
     trend: trend, fmtDate: fmtDate, fmtDay: fmtDay, timeAgo: timeAgo, isinOk: isinOk, parseCsv: parseCsv,
     mapCsvRows: mapCsvRows, sliceRange: sliceRange };
   if (typeof module !== "undefined" && module.exports) module.exports = api;

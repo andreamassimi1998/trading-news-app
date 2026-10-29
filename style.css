@@ -42,7 +42,6 @@ p { margin: 6px 0; }
 .crumbs { margin: 0 0 6px; font-size: .9rem; }
 
 .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; margin: 0 0 14px; box-shadow: var(--shadow); }
-.warn-card { background: var(--warn-bg); border-color: var(--warn-line); }
 .error-card { background: var(--err-bg); }
 .empty { color: var(--muted); font-style: italic; margin: 8px 0; }
 
