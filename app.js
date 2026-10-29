@@ -819,7 +819,7 @@
         h("li", null, "Prezzi: Yahoo Finance tramite la libreria non ufficiale yfinance. Dati ritardati, mai tempo reale; possibili buchi o errori."),
         h("li", null, "Notizie: feed RSS di Google News (per strumento) e feed configurati in config/sources.json. Nessuno scraping, nessun aggiramento di paywall."),
         h("li", null, "Eventi: date indicate dal provider (non verificate su fonti ufficiali) ed eventi inseriti a mano con fonte."),
-        h("li", null, "Analisi: modello AI locale (Ollama) o GitHub Models dal cloud. L'output dell'AI non è una fonte: ogni affermazione rimanda alle fonti raccolte."),
+        h("li", null, "Analisi: modello AI locale (Ollama) o API cloud configurata (es. Google Gemini, livello gratuito). L'output dell'AI non è una fonte: ogni affermazione rimanda alle fonti raccolte."),
         h("li", null, "Aggiornamenti automatici: in cloud tramite GitHub Actions (anche a PC spento); in locale solo mentre il programma è in esecuzione.")));
       out.push(info);
       out.push(disclaimer());
