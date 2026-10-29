@@ -43,7 +43,6 @@
     return el;
   }
   function empty(text) { return h("p", { class: "empty" }, text); }
-  function pctEl(v) { return h("span", { class: "pct " + L.trend(v) }, L.fmtPct(v)); }
   function toast(msg, kind, sticky) {
     toastEl.textContent = "";
     append(toastEl, msg);
@@ -160,13 +159,21 @@
   function clearCache() { cache = {}; }
 
   // ---------------------------------------------------------------- componenti comuni
+  var NS = "http://www.w3.org/2000/svg";
+  function svgEl(tag, attrs) {
+    var el = document.createElementNS(NS, tag);
+    Object.keys(attrs || {}).forEach(function (k) { el.setAttribute(k, attrs[k]); });
+    for (var i = 2; i < arguments.length; i++) if (arguments[i]) el.appendChild(arguments[i]);
+    return el;
+  }
   function demoBanner() {
     return h("div", { class: "banner demo" }, h("strong", null, "DATI DEMO: "), "alcuni valori mostrati sono simulati e non sono quotazioni reali.");
   }
   function eventIds(e) { return e.instrument_ids || (e.instrument_id ? [e.instrument_id] : []); }
   function byDate(a, b) { return (b.published_at || "").localeCompare(a.published_at || ""); }
-  /** Notizia: titolo e "fonte · quando". opts.forId = scheda di uno strumento; opts.names = elenco generale. */
-  function newsCard(n, opts) {
+  function chg(v) { return h("span", { class: "chg " + L.trend(v) }, L.fmtPct(v)); }
+  /** Notizia: titolo (in italiano se tradotto), cosa significa, "fonte · quando". Nessun link esterno. */
+  function newsItem(n, opts) {
     opts = opts || {};
     var via = n.via_holdings || {};
     var bits = [n.source || "Fonte non indicata", n.published_at ? L.timeAgo(n.published_at) : null];
@@ -175,11 +182,11 @@
       var who = ids.map(function (i) { return opts.names[i]; }).filter(Boolean);
       if (who.length) bits.unshift(who[0] + (who.length > 1 ? " +" + (who.length - 1) : ""));
     }
-    var viaTxt = opts.forId ? via[opts.forId] : null;
     var meaning = n.meaning || {};
     var mean = opts.forId ? meaning[opts.forId] : meaning[Object.keys(meaning)[0]];
+    var viaTxt = opts.forId ? via[opts.forId] : null;
     return h("article", { class: "news" },
-      h("h3", null, link(n.url, n.title_it || n.title)),
+      h("h3", null, n.title_it || n.title),
       mean ? h("p", { class: "meaning" }, mean) : null,
       h("div", { class: "meta" }, bits.filter(Boolean).join(" · ")),
       viaTxt ? h("div", { class: "via" }, "Riguarda " + viaTxt) : null);
@@ -220,15 +227,34 @@
   // Previsione: direzione (freccia e colore) e quanto è sicura. Senza direzione = previsione incerta.
   var DIR = { rialzo: ["↑", "al rialzo", "up"], ribasso: ["↓", "al ribasso", "down"] };
   var SICUREZZA = { bassa: "incerta", media: "abbastanza sicura", alta: "più sicura" };
+  var LIVELLO = { bassa: 1, media: 2, alta: 3 };
+  function forecastChip(dir, conf) {
+    var d = DIR[dir];
+    var lvl = d ? LIVELLO[conf] || 1 : 0;
+    return h("span", { class: "fc-chip " + (d ? d[2] : "flat"), title: d ? "Previsione " + d[1] + ", " + (SICUREZZA[conf] || "incerta") : "Previsione incerta" },
+      d ? d[0] + " " + d[1].replace("al ", "") : "incerta",
+      d ? h("span", { class: "meter mini", "aria-label": SICUREZZA[conf] || "incerta" }, [1, 2, 3].map(function (i) { return h("i", { class: i <= lvl ? "on" : "" }); })) : null);
+  }
+  /** Mini-grafico dell'ultimo mese nella lista: solo forma e direzione, senza assi. */
+  function sparkline(values) {
+    var W = 72, H = 30, P = 3;
+    if (!values || values.length < 2) return h("span", { class: "spark-mini" });
+    var min = Math.min.apply(null, values), max = Math.max.apply(null, values), span = max - min || 1;
+    var pts = values.map(function (v, i) { return [P + i / (values.length - 1) * (W - 2 * P), P + (1 - (v - min) / span) * (H - 2 * P)]; });
+    var last = pts[pts.length - 1];
+    return svgEl("svg", { class: "spark-mini " + L.trend(values[values.length - 1] - values[0]), viewBox: "0 0 " + W + " " + H, width: W, height: H, "aria-hidden": "true" },
+      svgEl("polyline", { points: pts.map(function (p) { return p[0].toFixed(1) + "," + p[1].toFixed(1); }).join(" ") }),
+      svgEl("circle", { cx: last[0].toFixed(1), cy: last[1].toFixed(1), r: 2.5 }));
+  }
   function instRow(r) {
     return h("a", { class: "inst", href: "#/strumento/" + encodeURIComponent(r.id) },
       h("div", { class: "inst-main" },
         h("div", { class: "inst-name" }, r.short || r.name, r.demo ? badge("DEMO", "demo") : null),
-        h("div", { class: "tiny muted" }, (r.type === "etf" ? "ETF" : "Azione"),
-          r.outlook_label ? h("span", { class: "outlook-word " + (DIR[r.outlook] ? DIR[r.outlook][2] : "mixed") },
-            " · " + (DIR[r.outlook] ? DIR[r.outlook][0] + " " + DIR[r.outlook][1] + (SICUREZZA[r.outlook_conf] ? ", " + SICUREZZA[r.outlook_conf] : "") : "previsione incerta")) : null)),
+        h("div", { class: "inst-sub" }, h("span", { class: "kind" }, r.type === "etf" ? "ETF" : "Azione"),
+          r.outlook_label ? forecastChip(r.outlook, r.outlook_conf) : null)),
+      sparkline(r.spark),
       h("div", { class: "inst-px" },
-        r.price == null ? h("div", { class: "tiny muted" }, "prezzo n.d.") : pctEl(r.daily && r.daily.pct),
+        r.price == null ? h("span", { class: "tiny muted" }, "n.d.") : chg(r.daily && r.daily.pct),
         h("div", { class: "tiny muted" }, r.m1 ? "1 mese " + L.fmtPct(r.m1.pct) : "")));
   }
   function nameMap(ov) {
@@ -236,19 +262,26 @@
     ((ov && ov.instruments) || []).forEach(function (r) { names[r.id] = r.short || r.name; });
     return names;
   }
+  function today() {
+    var s = new Date().toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long", timeZone: "Europe/Rome" });
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  }
 
   // ---------------------------------------------------------------- PAGINA 1: i miei titoli
   function pageHome() {
     return Promise.all([load("overview.json"), load("status.json")]).then(function (r) {
       var ov = r[0], st = r[1] || {};
       var rows = (ov && ov.instruments) || [];
+      var up = rows.filter(function (x) { return x.daily && x.daily.pct > 0; }).length;
+      var down = rows.filter(function (x) { return x.daily && x.daily.pct < 0; }).length;
       var out = [h("header", { class: "page-head" },
-        h("div", null, h("h1", null, "I miei titoli"),
-          h("p", { class: "tiny muted" }, "Aggiornati " + L.timeAgo(st.last_refresh_at || (ov && ov.generated_at)))),
-        refreshAction({}, "Aggiorna", "ghost"))];
+        h("div", null, h("p", { class: "eyebrow" }, today() + " · aggiornati " + L.timeAgo(st.last_refresh_at || (ov && ov.generated_at))),
+          h("h1", null, "I miei titoli"), rows.length ? h("p", { class: "sub" }, up + " in rialzo e " + down + " in calo oggi") : null),
+        refreshAction({}, "↻ Aggiorna", "ghost small"))];
       if (ov && ov.demo) out.push(demoBanner());
       out.push(rows.length ? h("div", { class: "card inst-list" }, rows.map(instRow)) : empty("Non segui ancora nessun titolo."));
       out.push(h("a", { class: "btn ghost add", href: "#/aggiungi" }, "+ Aggiungi un titolo"));
+      out.push(disclaimer());
       return out;
     });
   }
@@ -363,41 +396,61 @@
   }
 
   // ---------------------------------------------------------------- PAGINA 2: scheda del titolo
-  function chart(bars) {
+  /** Grafico delle chiusure: linea 2px, area leggera, punto finale; mirino con data e prezzo al passaggio. */
+  function chart(bars, currency) {
     var holder = h("div", { class: "chart" });
-    var ranges = ["1M", "3M", "6M", "1Y"];
+    var plot = h("div", { class: "plot" });
+    var tip = h("div", { class: "tip", role: "status" });
+    var ranges = [["1M", "1 mese"], ["3M", "3 mesi"], ["6M", "6 mesi"], ["1Y", "1 anno"]];
     var current = Prefs.get("range", "3M");
-    var btns = h("div", { class: "seg" });
-    var svgBox = h("div");
+    var btns = h("div", { class: "seg", role: "group", "aria-label": "Periodo del grafico" });
     function draw() {
-      svgBox.textContent = "";
+      plot.textContent = "";
       btns.textContent = "";
-      ranges.forEach(function (r) { btns.appendChild(h("button", { type: "button", class: r === current ? "on" : "", onclick: function () { current = r; Prefs.set("range", r); draw(); } }, r)); });
+      ranges.forEach(function (r) {
+        btns.appendChild(h("button", { type: "button", class: r[0] === current ? "on" : "", "aria-pressed": r[0] === current ? "true" : "false",
+          onclick: function () { current = r[0]; Prefs.set("range", r[0]); draw(); } }, r[1]));
+      });
       var pts = L.sliceRange(bars, current);
-      if (pts.length < 2) { svgBox.appendChild(empty("Dati insufficienti per il grafico.")); return; }
-      var W = 600, H = 140, P = 6;
+      if (pts.length < 2) { plot.appendChild(empty("Dati insufficienti per il grafico.")); return; }
+      var W = Math.max(260, plot.clientWidth || holder.clientWidth || 340), H = 170, P = 8;
       var vals = pts.map(function (b) { return b.close; });
-      var min = Math.min.apply(null, vals), max = Math.max.apply(null, vals);
-      var span = max - min || 1;
-      var d = pts.map(function (b, i) {
-        var x = P + (i / (pts.length - 1)) * (W - 2 * P);
-        var y = P + (1 - (b.close - min) / span) * (H - 2 * P);
-        return (i ? "L" : "M") + x.toFixed(1) + " " + y.toFixed(1);
-      }).join(" ");
-      var NS = "http://www.w3.org/2000/svg";
-      var svg = document.createElementNS(NS, "svg");
-      svg.setAttribute("viewBox", "0 0 " + W + " " + H);
-      svg.setAttribute("class", "spark " + L.trend(vals[vals.length - 1] - vals[0]));
-      svg.setAttribute("role", "img");
-      svg.setAttribute("aria-label", "Andamento delle chiusure " + current);
-      var path = document.createElementNS(NS, "path");
-      path.setAttribute("d", d);
-      svg.appendChild(path);
-      svgBox.appendChild(svg);
+      var min = Math.min.apply(null, vals), max = Math.max.apply(null, vals), span = max - min || 1;
+      var xy = pts.map(function (b, i) { return [P + i / (pts.length - 1) * (W - 2 * P), P + (1 - (b.close - min) / span) * (H - 2 * P)]; });
+      var line = xy.map(function (p, i) { return (i ? "L" : "M") + p[0].toFixed(1) + " " + p[1].toFixed(1); }).join(" ");
+      var area = line + " L" + xy[xy.length - 1][0].toFixed(1) + " " + H + " L" + xy[0][0].toFixed(1) + " " + H + " Z";
+      var last = xy[xy.length - 1];
+      var cross = svgEl("line", { class: "cross", x1: 0, x2: 0, y1: 0, y2: H, visibility: "hidden" });
+      var dot = svgEl("circle", { class: "hover-dot", r: 4, visibility: "hidden" });
+      var svg = svgEl("svg", { class: "price " + L.trend(vals[vals.length - 1] - vals[0]), viewBox: "0 0 " + W + " " + H, width: W, height: H,
+          role: "img", "aria-label": "Chiusure da " + L.fmtDay(pts[0].date) + " (" + L.fmtPrice(vals[0], currency) + ") a " +
+            L.fmtDay(pts[pts.length - 1].date) + " (" + L.fmtPrice(vals[vals.length - 1], currency) + ")" },
+        svgEl("line", { class: "grid", x1: 0, x2: W, y1: H - 0.5, y2: H - 0.5 }),
+        svgEl("path", { class: "area", d: area }), svgEl("path", { class: "line", d: line }),
+        svgEl("circle", { class: "end", cx: last[0].toFixed(1), cy: last[1].toFixed(1), r: 4 }), cross, dot);
+      function show(ev) {
+        var rect = svg.getBoundingClientRect();
+        var x = (ev.clientX - rect.left) * W / rect.width;
+        var i = Math.max(0, Math.min(pts.length - 1, Math.round((x - P) / (W - 2 * P) * (pts.length - 1))));
+        cross.setAttribute("x1", xy[i][0]); cross.setAttribute("x2", xy[i][0]); cross.setAttribute("visibility", "visible");
+        dot.setAttribute("cx", xy[i][0]); dot.setAttribute("cy", xy[i][1]); dot.setAttribute("visibility", "visible");
+        tip.textContent = L.fmtDay(pts[i].date) + " · " + L.fmtPrice(pts[i].close, currency);
+        tip.style.left = Math.min(Math.max(xy[i][0] * rect.width / W, 50), rect.width - 50) + "px";  // CSSOM: consentito dalla CSP
+        tip.className = "tip on";
+      }
+      function hide() { cross.setAttribute("visibility", "hidden"); dot.setAttribute("visibility", "hidden"); tip.className = "tip"; }
+      svg.addEventListener("pointermove", show);
+      svg.addEventListener("pointerdown", show);
+      svg.addEventListener("pointerleave", hide);
+      plot.appendChild(svg);
+      plot.appendChild(h("div", { class: "axis tiny muted" }, h("span", null, L.fmtDay(pts[0].date)),
+        h("span", null, "min " + L.fmtPrice(min) + " · max " + L.fmtPrice(max)), h("span", null, L.fmtDay(pts[pts.length - 1].date))));
     }
-    draw();
-    holder.appendChild(svgBox);
+    holder.appendChild(tip);
+    holder.appendChild(plot);
     holder.appendChild(btns);
+    setTimeout(draw, 0);  // serve la larghezza reale, nota solo dopo l'inserimento nella pagina
+    window.addEventListener("resize", function onResize() { if (!holder.isConnected) window.removeEventListener("resize", onResize); else draw(); });
     return holder;
   }
 
@@ -413,19 +466,39 @@
   }
 
   function trendCard(q, a) {
-    var s = section("Andamento");
-    if (!q) { s.body.appendChild(empty("Prezzi non disponibili.")); return s; }
+    var s = h("section", { class: "card hero" });
+    if (!q) { s.appendChild(empty("Prezzi non disponibili.")); return s; }
     var m = q.metrics || {};
-    if (q.demo) s.body.appendChild(demoBanner());
-    s.body.appendChild(h("div", { class: "price-hero" },
+    if (q.demo) s.appendChild(demoBanner());
+    s.appendChild(h("div", { class: "price-hero" },
       h("span", { class: "px-big" }, L.fmtPrice(q.price, q.currency)),
-      m.daily ? h("span", { class: "pct-big " + L.trend(m.daily.pct) }, L.fmtPct(m.daily.pct) + " oggi") : null,
-      q.stale ? h("div", { class: "tiny muted" }, "Ultimo prezzo del " + L.fmtDate(q.last_bar_date) + " (non aggiornato)") : null));
-    s.body.appendChild(chart(q.bars || []));
-    s.body.appendChild(h("div", { class: "periods" }, [["1 settimana", m.d5], ["1 mese", m.m1], ["Da inizio anno", m.ytd]].map(function (p) {
-      return h("div", null, h("div", { class: "tiny muted" }, p[0]), p[1] ? pctEl(p[1].pct) : h("span", { class: "muted" }, "—"));
+      m.daily ? h("span", { class: "chg big " + L.trend(m.daily.pct) }, L.fmtPct(m.daily.pct) + " oggi") : null));
+    s.appendChild(h("p", { class: "tiny muted" }, q.stale ? "Ultimo prezzo del " + L.fmtDate(q.last_bar_date) + " (non aggiornato)"
+      : (q.session && q.session.price_kind === "intraday" ? "In seduta, con ritardo" : "Chiusura del " + L.fmtDay(q.last_bar_date))));
+    s.appendChild(chart(q.bars || [], q.currency));
+    s.appendChild(h("div", { class: "periods" }, [["1 settimana", m.d5], ["1 mese", m.m1], ["Quest'anno", m.ytd]].map(function (p) {
+      return h("div", { class: "stat" }, h("div", { class: "tiny muted" }, p[0]), p[1] ? chg(p[1].pct) : h("span", { class: "muted" }, "—"));
     })));
-    if (a.in_breve) clampText(a.in_breve, "small").forEach(function (n) { s.body.appendChild(n); });
+    if (a.in_breve) clampText(a.in_breve, "lead").forEach(function (n) { s.appendChild(n); });
+    return s;
+  }
+
+  function briefCard(rec) {
+    var s = section("Le notizie in breve");
+    var pts = (rec && rec.analysis && rec.analysis.notizie_in_breve) || [];
+    if (!pts.length) {
+      s.body.appendChild(empty(rec ? "Il riassunto arriverà con la prossima analisi." : "Riassunto non ancora disponibile."));
+      return s;
+    }
+    s.body.appendChild(h("ol", { class: "brief" }, pts.map(function (p) {
+      return h("li", null, h("p", null, p.testo),
+        h("div", { class: "srcs" }, p.fonti.map(function (f) { return h("span", { class: "src" }, f); }),
+          p.una_sola_fonte ? h("span", { class: "src single" }, "una sola fonte") : null));
+    })));
+    var srch = rec.search;
+    s.body.appendChild(h("p", { class: "tiny muted" }, (srch && srch.sources.length
+      ? "Gemini ha letto gli articoli di " + srch.sources.length + (srch.sources.length === 1 ? " testata" : " testate")
+      : "Basato sui titoli delle notizie raccolte") + " · " + L.timeAgo(rec.generated_at)));
     return s;
   }
 
@@ -438,26 +511,30 @@
       s.body.appendChild(empty(rec ? "Informazioni insufficienti per una previsione ragionata." : "Previsione non ancora disponibile."));
     } else {
       var d = DIR[p.direzione];
-      s.body.appendChild(h("div", { class: "outlook-head " + (d ? d[2] : "mixed") },
-        h("strong", null, d ? d[0] + " Previsione " + d[1] : "Previsione incerta"),
-        h("div", { class: "tiny muted" }, [d && SICUREZZA[p.fiducia] ? SICUREZZA[p.fiducia] : null, p.orizzonte].filter(Boolean).join(" · "))));
+      var lvl = d ? LIVELLO[p.fiducia] || 1 : 0;
+      s.body.appendChild(h("div", { class: "fc-head " + (d ? d[2] : "flat") },
+        h("div", { class: "fc-icon", "aria-hidden": "true" }, d ? d[0] : "?"),
+        h("div", null, h("div", { class: "fc-title" }, d ? "Previsione " + d[1] : "Previsione incerta"),
+          h("div", { class: "fc-conf" },
+            h("span", { class: "meter", "aria-hidden": "true" }, [1, 2, 3].map(function (i) { return h("i", { class: i <= lvl ? "on" : "" }); })),
+            h("span", { class: "tiny muted" }, [d && SICUREZZA[p.fiducia], p.orizzonte].filter(Boolean).join(" · "))))));
       if (p.spiegazione) clampText(p.spiegazione, "small").forEach(function (n) { s.body.appendChild(n); });
       if (p.fattori_chiave && p.fattori_chiave.length) {
-        s.body.appendChild(h("div", { class: "keys" }, h("div", { class: "tiny muted" }, "Dipende soprattutto da"),
-          p.fattori_chiave.map(function (f) { return h("div", { class: "small" }, "• " + f.testo); })));
+        s.body.appendChild(h("div", { class: "keys" }, h("div", { class: "label" }, "Dipende soprattutto da"),
+          h("ul", null, p.fattori_chiave.map(function (f) { return h("li", null, f.testo); }))));
       }
       var LBL = { rialzista: "Se va meglio", centrale: "Più probabile", ribassista: "Se va peggio" };
       var rows = ["centrale", "rialzista", "ribassista"].filter(function (k) { return sc[k] && sc[k].descrizione; });
       if (rows.length) {
         s.body.appendChild(h("ul", { class: "scen-list" }, rows.map(function (k) {
-          return h("li", { class: "s-" + k }, h("strong", null, LBL[k] + ": "), sc[k].descrizione);
+          return h("li", { class: "s-" + k }, h("span", { class: "scen-lbl" }, LBL[k]), h("span", null, sc[k].descrizione));
         })));
       }
     }
     if (events.length) {
-      s.body.appendChild(h("div", { class: "dates" }, h("div", { class: "tiny muted" }, "Date da segnare"),
+      s.body.appendChild(h("div", { class: "dates" }, h("div", { class: "label" }, "Date da segnare"),
         events.slice(0, 3).map(function (e) {
-          return h("div", { class: "small" }, h("strong", null, L.fmtDay(e.date) + " "), e.title.replace(/^Pubblicazione risultati trimestrali/, "Risultati"));
+          return h("div", { class: "date-row" }, h("span", { class: "date" }, L.fmtDay(e.date)), h("span", null, e.title.replace(/^Pubblicazione risultati trimestrali/, "Risultati")));
         })));
     }
     s.body.appendChild(h("p", { class: "tiny muted" }, "Ipotesi basate sulle notizie raccolte, non una raccomandazione."));
@@ -472,27 +549,36 @@
       if (!inst) return [empty("Titolo non trovato."), h("a", { href: "#/" }, "← I miei titoli")];
       var q = r[1], rec = r[2], newsMeta = r[3] || {}, evs = (r[4] && r[4].items) || [];
       var news = (newsMeta.items || []).filter(function (n) { return n.instrument_ids.indexOf(id) >= 0; }).sort(byDate);
-      var today = new Date().toISOString().slice(0, 10);
-      var events = evs.filter(function (e) { return eventIds(e).indexOf(id) >= 0 && e.date >= today; });
+      var todayIso = new Date().toISOString().slice(0, 10);
+      var events = evs.filter(function (e) { return eventIds(e).indexOf(id) >= 0 && e.date >= todayIso; });
       var a = (rec && rec.analysis) || {};
       var out = [h("p", { class: "crumbs" }, h("a", { href: "#/" }, "← I miei titoli")),
         h("header", { class: "page-head" },
-          h("div", null, h("h1", null, inst.short || inst.name), h("p", { class: "tiny muted" }, (inst.type === "etf" ? "ETF" : "Azione") + " · " + inst.symbol)),
-          refreshAction({ components: ["prices", "funds", "events", "news", "analysis"], instrument: id }, "Aggiorna", "ghost"))];
+          h("div", null, h("p", { class: "eyebrow" }, (inst.type === "etf" ? "ETF" : "Azione") + " · " + inst.symbol), h("h1", null, inst.short || inst.name)),
+          refreshAction({ components: ["prices", "funds", "events", "news", "analysis"], instrument: id }, "↻ Aggiorna", "ghost small"))];
       out.push(trendCard(q, a));
-      var ns = section("Notizie");
+      out.push(briefCard(rec));
+      out.push(forecastCard(rec, events));
+      var ns = section("Titoli delle notizie");
       if (news.length) {
-        news.slice(0, 8).forEach(function (n) { ns.body.appendChild(newsCard(n, { forId: id })); });
-        if (news.length > 8) ns.body.appendChild(more("Altre " + (news.length - 8) + " notizie", news.slice(8, 40).map(function (n) { return newsCard(n, { forId: id }); })));
+        news.slice(0, 6).forEach(function (n) { ns.body.appendChild(newsItem(n, { forId: id })); });
+        if (news.length > 6) ns.body.appendChild(more("Altre " + (Math.min(news.length, 40) - 6) + " notizie", news.slice(6, 40).map(function (n) { return newsItem(n, { forId: id }); })));
       } else ns.body.appendChild(empty("Nessuna notizia negli ultimi giorni."));
       out.push(ns);
-      out.push(forecastCard(rec, events));
       out.push(h("p", { class: "center small" }, h("a", { href: "#/modifica/" + encodeURIComponent(id) }, "Modifica o rimuovi")));
       return out;
     });
   }
 
   // ---------------------------------------------------------------- PAGINA 3: notizie
+  function dayLabel(iso) {
+    if (!iso) return "Data non indicata";
+    var d = new Date(iso).toLocaleDateString("en-CA", { timeZone: "Europe/Rome" });  // AAAA-MM-GG, ora italiana
+    var now = new Date(), y = new Date(now - 86400000);
+    if (d === now.toLocaleDateString("en-CA", { timeZone: "Europe/Rome" })) return "Oggi";
+    if (d === y.toLocaleDateString("en-CA", { timeZone: "Europe/Rome" })) return "Ieri";
+    return L.fmtDay(d);
+  }
   function pageNews() {
     return Promise.all([load("news.json"), load("overview.json")]).then(function (r) {
       var nm = r[0] || { items: [] };
@@ -500,7 +586,7 @@
       var ids = Object.keys(names);
       var current = Prefs.get("newsFilter", "");
       if (current && !names[current]) current = "";
-      var listEl = h("div", { class: "card" });
+      var listEl = h("div");
       var chips = h("div", { class: "chips filter", role: "group", "aria-label": "Filtra per titolo" });
       var all = nm.items.slice().sort(byDate);
       function draw() {
@@ -510,14 +596,24 @@
             onclick: function () { current = c[0]; Prefs.set("newsFilter", current); draw(); } }, c[1]));
         });
         var opts = current ? { forId: current } : { names: names };
-        var items = all.filter(function (n) { return !current || n.instrument_ids.indexOf(current) >= 0; });
+        var matching = all.filter(function (n) { return !current || n.instrument_ids.indexOf(current) >= 0; });
+        var items = matching.slice(0, 25), rest = matching.slice(25, 80);
         listEl.textContent = "";
-        if (!items.length) listEl.appendChild(empty("Nessuna notizia negli ultimi giorni."));
-        items.slice(0, 20).forEach(function (n) { listEl.appendChild(newsCard(n, opts)); });
-        if (items.length > 20) listEl.appendChild(more("Altre notizie", items.slice(20, 80).map(function (n) { return newsCard(n, opts); })));
+        if (!items.length) { listEl.appendChild(empty("Nessuna notizia negli ultimi giorni.")); return; }
+        var groups = [];
+        items.forEach(function (n) {
+          var g = dayLabel(n.published_at);
+          if (!groups.length || groups[groups.length - 1].label !== g) groups.push({ label: g, items: [] });
+          groups[groups.length - 1].items.push(n);
+        });
+        groups.forEach(function (g) {
+          listEl.appendChild(h("section", { class: "card" }, h("h2", { class: "day" }, g.label), g.items.map(function (n) { return newsItem(n, opts); })));
+        });
+        if (rest.length) listEl.appendChild(h("section", { class: "card" }, more("Altre " + rest.length + " notizie", rest.map(function (n) { return newsItem(n, opts); }))));
       }
       draw();
-      return [h("header", { class: "page-head" }, h("h1", null, "Notizie"), refreshAction({ components: ["news"] }, "Aggiorna", "ghost")), chips, listEl];
+      return [h("header", { class: "page-head" }, h("div", null, h("p", { class: "eyebrow" }, "Ultimi 14 giorni"), h("h1", null, "Notizie")),
+        refreshAction({ components: ["news"] }, "↻ Aggiorna", "ghost small")), chips, listEl];
     });
   }
 
@@ -529,12 +625,12 @@
       var keys = Object.keys(days).sort().reverse().slice(0, 7);
       if (!keys.length) { sec.body.appendChild(h("p", { class: "small muted" }, "Nessuna chiamata registrata finora.")); return; }
       sec.body.appendChild(h("table", { class: "kv small" },
-        h("tr", null, h("th", null, "Giorno"), h("th", null, "Chiamate"), h("th", null, "Token"), h("th", null, "Modelli")),
+        h("tr", null, h("th", null, "Giorno"), h("th", null, "Chiamate"), h("th", null, "Ricerche"), h("th", null, "Token"), h("th", null, "Modelli")),
         keys.map(function (k) {
           var d = days[k] || {};
           var models = Object.keys(d.by_model || {}).map(function (m) { return m + " ×" + d.by_model[m]; }).join(", ");
           return h("tr", null, h("td", null, k), h("td", null, String(d.calls || 0) + (d.failed ? " (" + d.failed + " fallite)" : "")),
-            h("td", null, (d.total_tokens || 0).toLocaleString("it-IT")), h("td", null, models || "—"));
+            h("td", null, String(d.searches || 0)), h("td", null, (d.total_tokens || 0).toLocaleString("it-IT")), h("td", null, models || "—"));
         })));
     });
     return sec.body;
@@ -561,7 +657,7 @@
         h("li", null, "Prezzi: Yahoo Finance tramite la libreria non ufficiale yfinance. Dati ritardati, mai tempo reale; possibili buchi o errori."),
         h("li", null, "Notizie: Google News (per le azioni il nome della società; per gli ETF l'indice, il mercato e le principali partecipazioni) e i comunicati di BCE e Fed. Nessuno scraping, nessun aggiramento di paywall."),
         h("li", null, "Eventi: date dei risultati indicate dal provider (non verificate) e riunioni delle banche centrali da config/manual_events.json."),
-        h("li", null, "Analisi e previsione: Google Gemini, solo sui dati raccolti. Non è una fonte né un consiglio di investimento."))));
+        h("li", null, "Riassunto e previsione: Google Gemini, che legge gli articoli con la ricerca Google (quota gratuita; oltre il limite mensile usa solo i titoli). Non è un consiglio di investimento."))));
 
       var g = gh();
       var gs = section("Collegamento GitHub", "Il token resta solo in questo browser. Serve un token «fine-grained» limitato al repository dei dati, con permessi Contents: read e Actions: read and write.");
