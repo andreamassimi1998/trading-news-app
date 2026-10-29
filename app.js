@@ -170,6 +170,8 @@
     return h("div", { class: "banner demo" }, h("strong", null, "DATI DEMO: "), "alcuni valori mostrati sono simulati e non sono quotazioni reali.");
   }
   function eventIds(e) { return e.instrument_ids || (e.instrument_id ? [e.instrument_id] : []); }
+  // dati incompleti (es. una notizia senza titoli collegati) vanno ignorati, mai bloccare la pagina
+  function newsIds(n) { return n && Array.isArray(n.instrument_ids) ? n.instrument_ids : []; }
   function byDate(a, b) { return (b.published_at || "").localeCompare(a.published_at || ""); }
   function chg(v) { return h("span", { class: "chg " + L.trend(v) }, L.fmtPct(v)); }
   /** Notizia: titolo (in italiano se tradotto), cosa significa, "fonte · quando". Nessun link esterno. */
@@ -178,7 +180,7 @@
     var via = n.via_holdings || {};
     var bits = [n.source || "Fonte non indicata", n.published_at ? L.timeAgo(n.published_at) : null];
     if (opts.names) {  // prima lo strumento citato direttamente, poi gli ETF che lo contengono
-      var ids = (n.instrument_ids || []).filter(function (i) { return !via[i]; }).concat((n.instrument_ids || []).filter(function (i) { return via[i]; }));
+      var ids = newsIds(n).filter(function (i) { return !via[i]; }).concat(newsIds(n).filter(function (i) { return via[i]; }));
       var who = ids.map(function (i) { return opts.names[i]; }).filter(Boolean);
       if (who.length) bits.unshift(who[0] + (who.length > 1 ? " +" + (who.length - 1) : ""));
     }
@@ -562,7 +564,7 @@
       var inst = (((r[0] || {}).instruments) || []).filter(function (x) { return x.id === id; })[0];
       if (!inst) return [empty("Titolo non trovato."), h("a", { href: "#/" }, "← I miei titoli")];
       var q = r[1], rec = r[2], newsMeta = r[3] || {}, evs = (r[4] && r[4].items) || [];
-      var news = (newsMeta.items || []).filter(function (n) { return n.instrument_ids.indexOf(id) >= 0; }).sort(byDate);
+      var news = (newsMeta.items || []).filter(function (n) { return newsIds(n).indexOf(id) >= 0; }).sort(byDate);
       var todayIso = new Date().toISOString().slice(0, 10);
       var events = evs.filter(function (e) { return eventIds(e).indexOf(id) >= 0 && e.date >= todayIso; });
       var a = (rec && rec.analysis) || {};
@@ -610,7 +612,7 @@
             onclick: function () { current = c[0]; Prefs.set("newsFilter", current); draw(); } }, c[1]));
         });
         var opts = current ? { forId: current } : { names: names };
-        var matching = all.filter(function (n) { return !current || n.instrument_ids.indexOf(current) >= 0; });
+        var matching = all.filter(function (n) { return newsIds(n).length && (!current || newsIds(n).indexOf(current) >= 0); });
         var items = matching.slice(0, 25), rest = matching.slice(25, 80);
         listEl.textContent = "";
         if (!items.length) { listEl.appendChild(empty("Nessuna notizia negli ultimi giorni.")); return; }
