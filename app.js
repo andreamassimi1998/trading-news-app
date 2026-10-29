@@ -306,7 +306,8 @@
       field("issuer", "Emittente (ETF)"),
       field("index_name", "Indice replicato (ETF)", null, "Usato anche per cercare notizie sull'indice."),
       field("aliases", "Nomi alternativi per le notizie", null, "Separati da virgola, es. \"Apple\"."),
-      field("benchmark", "Indice di confronto (facoltativo)", null, "Simbolo Yahoo, es. ^GSPC. Vuoto = predefinito per valuta."));
+      field("benchmark", "Indice di confronto (facoltativo)", null, "Simbolo Yahoo, es. ^GSPC. Vuoto = predefinito per valuta."),
+      field("price_symbol", "Quotazione per i prezzi (facoltativa)", { autocapitalize: "characters" }, "Es. EUNL.DE: la quotazione in euro su Xetra, più vicina a Trade Republic. Vuoto = il simbolo sopra."));
     var msg = h("p", { class: "form-msg" });
     var btn = h("button", { class: "btn primary", type: "submit" }, saveLabel || "Conferma e salva");
     form.appendChild(msg);
@@ -318,6 +319,7 @@
       data.symbol = data.symbol.toUpperCase();
       data.isin = data.isin.toUpperCase();
       data.currency = data.currency.toUpperCase();
+      data.price_symbol = data.price_symbol.toUpperCase();
       data.aliases = data.aliases ? data.aliases.split(",").map(function (s) { return s.trim(); }).filter(Boolean) : [];
       if (data.isin && !L.isinOk(data.isin)) { msg.textContent = "ISIN non valido: controlla le cifre."; return; }
       if (!Backend.canAct()) { msg.textContent = "Per salvare serve il collegamento a GitHub (Impostazioni)."; return; }
@@ -465,6 +467,19 @@
     return out;
   }
 
+  var EXCHANGES = { GER: "Xetra", FRA: "Francoforte", MIL: "Milano", AMS: "Amsterdam", LSE: "Londra", PAR: "Parigi",
+    NMS: "Nasdaq", NGM: "Nasdaq", NCM: "Nasdaq", NYQ: "New York", PCX: "New York" };
+  /** "Prezzo delle 15:42 · Xetra · ritardo ~15 min" oppure "Chiusura del 29 ott · Xetra", con l'eventuale conversione. */
+  function priceWhen(q) {
+    var intraday = q.session && q.session.price_kind === "intraday";
+    var parts = [q.stale ? "Ultimo prezzo del " + L.fmtDate(q.last_bar_date) + " (non aggiornato)"
+      : intraday && /T/.test(q.as_of || "") ? "Prezzo delle " + L.fmtTime(q.as_of) : "Chiusura del " + L.fmtDay(q.last_bar_date)];
+    if (q.exchange) parts.push(EXCHANGES[q.exchange] || q.exchange);
+    if (intraday && !q.stale) parts.push("ritardo ~15 min");
+    if (q.original_currency) parts.push("convertito da " + q.original_currency + " al cambio del giorno");
+    return parts.join(" · ");
+  }
+
   function trendCard(q, a) {
     var s = h("section", { class: "card hero" });
     if (!q) { s.appendChild(empty("Prezzi non disponibili.")); return s; }
@@ -473,8 +488,7 @@
     s.appendChild(h("div", { class: "price-hero" },
       h("span", { class: "px-big" }, L.fmtPrice(q.price, q.currency)),
       m.daily ? h("span", { class: "chg big " + L.trend(m.daily.pct) }, L.fmtPct(m.daily.pct) + " oggi") : null));
-    s.appendChild(h("p", { class: "tiny muted" }, q.stale ? "Ultimo prezzo del " + L.fmtDate(q.last_bar_date) + " (non aggiornato)"
-      : (q.session && q.session.price_kind === "intraday" ? "In seduta, con ritardo" : "Chiusura del " + L.fmtDay(q.last_bar_date))));
+    s.appendChild(h("p", { class: "tiny muted" }, priceWhen(q)));
     s.appendChild(chart(q.bars || [], q.currency));
     s.appendChild(h("div", { class: "periods" }, [["1 settimana", m.d5], ["1 mese", m.m1], ["Quest'anno", m.ytd]].map(function (p) {
       return h("div", { class: "stat" }, h("div", { class: "tiny muted" }, p[0]), p[1] ? chg(p[1].pct) : h("span", { class: "muted" }, "—"));

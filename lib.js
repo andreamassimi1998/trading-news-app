@@ -45,6 +45,11 @@
     if (withTime !== false) { opts.hour = "2-digit"; opts.minute = "2-digit"; }
     return d.toLocaleString("it-IT", opts);
   }
+  /** Ora italiana di un istante ISO: "15:42". */
+  function fmtTime(iso) {
+    var d = new Date(iso);
+    return isNaN(d) ? "" : d.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Rome" });
+  }
   /** Giorno breve per i calendari: "17 nov" (con l'anno solo se diverso da quello corrente). */
   function fmtDay(iso, now) {
     if (!/^\d{4}-\d{2}-\d{2}/.test(iso || "")) return "—";
@@ -91,7 +96,7 @@
   }
 
   var api = { safeUrl: safeUrl, fmtPrice: fmtPrice, fmtPct: fmtPct,
-    trend: trend, fmtDate: fmtDate, fmtDay: fmtDay, timeAgo: timeAgo, isinOk: isinOk, sliceRange: sliceRange };
+    trend: trend, fmtDate: fmtDate, fmtDay: fmtDay, fmtTime: fmtTime, timeAgo: timeAgo, isinOk: isinOk, sliceRange: sliceRange };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.PII = api;
 })(typeof window !== "undefined" ? window : globalThis);
