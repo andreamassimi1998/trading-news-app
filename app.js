@@ -68,20 +68,12 @@
   // ---------------------------------------------------------------- backend
   var Backend = {
     mode: "static",
-    health: null,
-    init: function () {
-      return fetch("api/health", { cache: "no-store" }).then(function (r) {
-        if (!r.ok) throw new Error();
-        return r.json();
-      }).then(function (j) {
-        if (!j || j.mode !== "local") throw new Error();
-        Backend.mode = "local"; Backend.health = j;
-      }).catch(function () {
-        var g = gh();
-        Backend.mode = g.repo && g.token ? "github" : "static";
-      });
+    init: function () {  // "github" con token salvato; altrimenti sola lettura
+      var g = gh();
+      Backend.mode = g.repo && g.token ? "github" : "static";
+      return Promise.resolve();
     },
-    canAct: function () { return Backend.mode === "local" || Backend.mode === "github"; },
+    canAct: function () { return Backend.mode === "github"; },
     data: function (path) {
       var g = gh();
       var req;
@@ -91,7 +83,8 @@
           cache: "no-store"
         });
       } else {
-        req = fetch("data/" + path + "?t=" + Date.now(), { cache: "no-store" });
+        // sola lettura: dati dalla cartella data/ del repository (anteprima sul PC: python3 -m http.server, poi /web/)
+        req = fetch("../data/" + path + "?t=" + Date.now(), { cache: "no-store" });
       }
       return req.then(function (r) {
         if (r.status === 404) return null;
@@ -100,20 +93,7 @@
         return r.json();
       });
     },
-    // --- azioni ---
-    post: function (path, body, method) {
-      return fetch("api/" + path, { method: method || "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) })
-        .then(function (r) { return r.json().then(function (j) { if (!r.ok && !j.error) j.error = "Errore " + r.status; return j; }); });
-    },
-    waitLocalJob: function (onTick) {
-      return new Promise(function (resolve) {
-        (function poll() {
-          fetch("api/jobs", { cache: "no-store" }).then(function (r) { return r.json(); }).then(function (j) {
-            if (j.running) { if (onTick) onTick(j.running); setTimeout(poll, 2500); } else resolve(j.last);
-          }).catch(function () { setTimeout(poll, 4000); });
-        })();
-      });
-    },
+    // --- azioni (workflow GitHub Actions) ---
     dispatch: function (workflow, inputs) {
       var g = gh();
       var since = new Date(Date.now() - 5000).toISOString();
@@ -154,24 +134,11 @@
     },
     refresh: function (opts) {
       opts = opts || {};
-      if (Backend.mode === "local") {
-        return Backend.post("refresh", opts).then(function (j) {
-          if (!j.started) throw new Error(j.running ? "Un aggiornamento è già in corso." : (j.error || "Avvio non riuscito"));
-          toast("Aggiornamento in corso…", "info", true);
-          return Backend.waitLocalJob().then(function (last) { return last && last.result; });
-        });
-      }
       return Backend.dispatch("refresh.yml", {
         components: (opts.components || []).join(",") || "all", instrument: opts.instrument || "", force: opts.force ? "true" : "false"
       }).then(function (run) { return { status: run.conclusion === "success" ? "ok" : "error", run: run }; });
     },
     manage: function (action, payload) {
-      if (Backend.mode === "local") {
-        if (action === "search") return Backend.post("search", payload);
-        if (action === "add") return Backend.post("instruments", payload);
-        if (action === "update") return Backend.post("instruments/" + encodeURIComponent(payload.id), payload);
-        if (action === "remove") return Backend.post("instruments/" + encodeURIComponent(payload.id), {}, "DELETE");
-      }
       var rid = "r" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
       return Backend.dispatch("manage.yml", { action: action, payload: JSON.stringify(payload), request_id: rid }).then(function (run) {
         if (run.conclusion !== "success") throw new Error("L'esecuzione su GitHub non è andata a buon fine.");
@@ -226,7 +193,7 @@
     var b = h("button", { class: "btn " + (cls || ""), type: "button" }, label);
     b.addEventListener("click", function () {
       if (!Backend.canAct()) {
-        toast(["Azione non disponibile: avvia il server locale oppure configura GitHub nelle ", h("a", { href: "#/impostazioni" }, "Impostazioni"), "."], "warn");
+        toast(["Azione non disponibile: collega GitHub nelle ", h("a", { href: "#/impostazioni" }, "Impostazioni"), "."], "warn");
         return;
       }
       b.disabled = true;
@@ -320,9 +287,9 @@
       data.currency = data.currency.toUpperCase();
       data.aliases = data.aliases ? data.aliases.split(",").map(function (s) { return s.trim(); }).filter(Boolean) : [];
       if (data.isin && !L.isinOk(data.isin)) { msg.textContent = "ISIN non valido: controlla le cifre."; return; }
-      if (!Backend.canAct()) { msg.textContent = "Per salvare serve il server locale o la configurazione GitHub (Impostazioni)."; return; }
+      if (!Backend.canAct()) { msg.textContent = "Per salvare serve il collegamento a GitHub (Impostazioni)."; return; }
       btn.disabled = true;
-      msg.textContent = Backend.mode === "github" ? "Invio a GitHub: il salvataggio e il primo aggiornamento richiedono 1-3 minuti…" : "Salvataggio e primo aggiornamento dei dati…";
+      msg.textContent = "Invio a GitHub: il salvataggio e il primo aggiornamento richiedono 1-3 minuti…";
       Promise.resolve(onSave(data)).then(function (res) {
         if (!res || !res.ok) throw new Error((res && (res.error || (res.errors && res.errors[0] && res.errors[0].error))) || "Salvataggio non riuscito.");
         clearCache();
@@ -348,10 +315,10 @@
     }
     searchForm.addEventListener("submit", function (ev) {
       ev.preventDefault();
-      if (!Backend.canAct()) { results.textContent = ""; results.appendChild(empty("La ricerca richiede il server locale o la configurazione GitHub. Puoi comunque inserire i dati a mano qui sotto.")); return; }
+      if (!Backend.canAct()) { results.textContent = ""; results.appendChild(empty("La ricerca richiede il collegamento a GitHub (Impostazioni). Puoi comunque inserire i dati a mano qui sotto.")); return; }
       btn.disabled = true;
       results.textContent = "";
-      results.appendChild(h("p", { class: "muted" }, Backend.mode === "github" ? "Ricerca tramite GitHub (circa 30-60 secondi)…" : "Ricerca in corso…"));
+      results.appendChild(h("p", { class: "muted" }, "Ricerca tramite GitHub (circa 30-60 secondi)…"));
       Backend.manage("search", { query: q.value }).then(function (res) {
         results.textContent = "";
         if (!res.ok) throw new Error(res.error || "Ricerca non riuscita");
@@ -577,7 +544,8 @@
   function pageSettings() {
     return load("status.json").catch(function () { return null; }).then(function (status) {
       var out = [h("header", { class: "page-head" }, h("h1", null, "Impostazioni"))];
-      var modeTxt = { local: "Server locale attivo: le azioni vengono eseguite su questo computer.", github: "Collegata a GitHub: i dati arrivano dal repository e gli aggiornamenti girano su GitHub Actions, anche a PC spento.", static: "Sola lettura: nessun server locale e nessun collegamento GitHub configurato." }[Backend.mode];
+      var modeTxt = Backend.mode === "github" ? "Collegata a GitHub: i dati arrivano dal repository e gli aggiornamenti girano su GitHub Actions, anche a PC spento."
+        : "Non collegata: inserisci qui sotto il token GitHub per leggere i dati e aggiornarli.";
       out.push(h("p", { class: "small" }, modeTxt));
 
       var comps = (status && status.components) || {};
@@ -590,12 +558,11 @@
             c && c.errors && c.errors.length ? h("details", null, h("summary", null, c.errors.length + " errori"), h("ul", { class: "plain tiny" }, c.errors.map(function (e) { return h("li", null, (e.symbol || e.id || "") + ": " + e.error); }))) : null));
       }));
       var advanced = [more("Stato degli aggiornamenti", stTable), more("Consumo AI", aiUsageSection())];
-      if (Backend.health) advanced.unshift(more("Server locale", h("p", { class: "small" }, "AI: " + (Backend.health.ai_provider === "none" ? "nessun modello disponibile (sintesi senza AI)" : Backend.health.ai_provider + " " + (Backend.health.ai_model || "")) + " · prezzi: " + Backend.health.price_provider)));
       advanced.push(more("Fonti e limiti", h("ul", { class: "plain small" },
         h("li", null, "Prezzi: Yahoo Finance tramite la libreria non ufficiale yfinance. Dati ritardati, mai tempo reale; possibili buchi o errori."),
         h("li", null, "Notizie: Google News (per le azioni il nome della società; per gli ETF l'indice, il mercato e le principali partecipazioni) e i comunicati di BCE e Fed. Nessuno scraping, nessun aggiramento di paywall."),
         h("li", null, "Eventi: date dei risultati indicate dal provider (non verificate) e riunioni delle banche centrali da config/manual_events.json."),
-        h("li", null, "Analisi: modello AI locale (Ollama) o API cloud configurata. L'output dell'AI non è una fonte: ogni affermazione rimanda alle fonti raccolte."))));
+        h("li", null, "Analisi e previsione: Google Gemini, solo sui dati raccolti. Non è una fonte né un consiglio di investimento."))));
 
       var g = gh();
       var gs = section("Collegamento GitHub", "Il token resta solo in questo browser. Serve un token «fine-grained» limitato al repository dei dati, con permessi Contents: read e Actions: read and write.");
@@ -624,63 +591,12 @@
       gs.body.appendChild(msg);
       out.push(gs);
 
-      out.push(csvSection());
       var adv = section("Avanzate");
       adv.body.appendChild(h("div", { class: "deep" }, advanced));
       out.push(adv);
       out.push(disclaimer());
       return out;
     });
-  }
-
-  function csvSection() {
-    var s = section("Importa da CSV", "Si leggono solo le colonne che scegli; quantità e importi non vengono mai salvati.");
-    var file = h("input", { type: "file", accept: ".csv,text/csv", class: "input" });
-    var mapBox = h("div");
-    var prev = h("div");
-    var rows = [];
-    file.addEventListener("change", function () {
-      var fl = file.files[0];
-      if (!fl) return;
-      if (fl.size > 512 * 1024) { mapBox.textContent = "File troppo grande (max 512 KB)."; return; }
-      var reader = new FileReader();
-      reader.onload = function () {
-        rows = L.parseCsv(reader.result);
-        mapBox.textContent = ""; prev.textContent = "";
-        if (rows.length < 2) { mapBox.appendChild(empty("Il file non contiene righe di dati.")); return; }
-        var header = rows[0];
-        var sel = {};
-        var GUESS = { symbol: /^(symbol|ticker|simbolo)$/i, isin: /^isin$/i, name: /^(name|nome|strumento|titolo|instrument|descrizione)$/i, exchange: /^(exchange|borsa|mercato)$/i, currency: /^(currency|valuta)$/i, type: /^(type|tipo)$/i };
-        var LBL = { symbol: "Simbolo *", isin: "ISIN", name: "Nome", exchange: "Borsa", currency: "Valuta", type: "Tipo" };
-        Object.keys(LBL).forEach(function (f) {
-          var guess = header.findIndex(function (c) { return GUESS[f].test(c.trim()); });
-          sel[f] = h("select", { class: "input" }, h("option", { value: "" }, "— non usare —"), header.map(function (c, i) { return h("option", { value: String(i), selected: i === guess }, c || "colonna " + (i + 1)); }));
-          mapBox.appendChild(h("label", { class: "field inline" }, h("span", null, LBL[f]), sel[f]));
-        });
-        var defType = h("select", { class: "input" }, h("option", { value: "" }, "—"), h("option", { value: "stock" }, "Azione"), h("option", { value: "etf" }, "ETF"));
-        mapBox.appendChild(h("label", { class: "field inline" }, h("span", null, "Tipo se assente"), defType));
-        mapBox.appendChild(h("button", { class: "btn", type: "button", onclick: function () {
-          var mapping = {};
-          Object.keys(sel).forEach(function (f) { if (sel[f].value !== "") mapping[f] = sel[f].value; });
-          var mapped = L.mapCsvRows(rows, mapping, defType.value);
-          prev.textContent = "";
-          var ok = mapped.filter(function (m) { return !m.errors.length; });
-          prev.appendChild(h("table", { class: "kv small" }, h("tr", null, h("th", null, "Riga"), h("th", null, "Simbolo"), h("th", null, "Nome"), h("th", null, "ISIN"), h("th", null, "Esito")),
-            mapped.map(function (m) { return h("tr", null, h("td", null, String(m.line)), h("td", null, m.instrument.symbol), h("td", null, m.instrument.name), h("td", null, m.instrument.isin || ""), h("td", null, m.errors.length ? badge(m.errors.join(", "), "warn") : badge("ok", "ok"))); })));
-          if (ok.length) prev.appendChild(actionButton("Conferma importazione di " + ok.length + " strumenti", function () {
-            return Backend.manage("add", { instruments: ok.map(function (m) { return m.instrument; }) }).then(function (res) {
-              clearCache();
-              toast((res.added ? res.added.length : 0) + " importati" + (res.errors && res.errors.length ? ", " + res.errors.length + " scartati (" + res.errors.map(function (e) { return e.symbol + ": " + e.error; }).join("; ") + ")" : "") + ".", res.ok ? "ok" : "warn");
-            });
-          }, "primary"));
-        } }, "Mostra anteprima"));
-      };
-      reader.readAsText(fl);
-    });
-    s.body.appendChild(file);
-    s.body.appendChild(mapBox);
-    s.body.appendChild(prev);
-    return s;
   }
 
   function disclaimer() {

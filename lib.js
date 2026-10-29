@@ -80,50 +80,6 @@
     return (10 - (total % 10)) % 10 === Number(isin[11]);
   }
 
-  /** Parser CSV minimale (virgolette, separatore , ; o tab) per l'anteprima d'importazione. */
-  function parseCsv(text) {
-    text = String(text || "").replace(/^﻿/, "");
-    var first = text.split(/\r?\n/)[0] || "";
-    var sep = [";", "\t", ","].sort(function (a, b) { return first.split(b).length - first.split(a).length; })[0];
-    var rows = [], row = [], cell = "", q = false;
-    for (var i = 0; i < text.length; i++) {
-      var c = text[i];
-      if (q) {
-        if (c === '"' && text[i + 1] === '"') { cell += '"'; i++; }
-        else if (c === '"') q = false;
-        else cell += c;
-      } else if (c === '"') q = true;
-      else if (c === sep) { row.push(cell.trim()); cell = ""; }
-      else if (c === "\n" || c === "\r") {
-        if (c === "\r" && text[i + 1] === "\n") i++;
-        row.push(cell.trim()); rows.push(row); row = []; cell = "";
-      } else cell += c;
-    }
-    if (cell || row.length) { row.push(cell.trim()); rows.push(row); }
-    return rows.filter(function (r) { return r.some(function (x) { return x !== ""; }); });
-  }
-
-  /** Righe CSV → strumenti, leggendo SOLO le colonne mappate (le altre non vengono mai lette). */
-  function mapCsvRows(rows, mapping, defaultType) {
-    var out = [];
-    for (var i = 1; i < rows.length && i <= 300; i++) {
-      var r = rows[i], inst = {}, errors = [];
-      ["symbol", "isin", "name", "exchange", "currency", "type"].forEach(function (f) {
-        if (mapping[f] != null && mapping[f] !== "") inst[f] = (r[Number(mapping[f])] || "").trim();
-      });
-      var t = (inst.type || defaultType || "").toLowerCase();
-      inst.type = /^(etf|etc|etp|fund|fondo)$/.test(t) ? "etf" : /^(stock|azion[ei]|share|equity|aktie)$/.test(t) ? "stock" : t;
-      inst.symbol = (inst.symbol || "").toUpperCase();
-      if (inst.isin) inst.isin = inst.isin.toUpperCase();
-      if (!inst.name) inst.name = inst.symbol;
-      if (!/^[A-Z0-9^=][A-Z0-9.\-^=]{0,24}$/.test(inst.symbol)) errors.push("simbolo non valido");
-      if (inst.isin && !isinOk(inst.isin)) errors.push("ISIN non valido");
-      if (inst.type !== "stock" && inst.type !== "etf") errors.push("tipo mancante (azione/ETF)");
-      out.push({ line: i + 1, instrument: inst, errors: errors });
-    }
-    return out;
-  }
-
   /** Riduce una serie di barre all'intervallo richiesto (1M, 3M, 6M, 1Y). */
   function sliceRange(bars, range) {
     if (!bars || !bars.length) return [];
@@ -135,8 +91,7 @@
   }
 
   var api = { safeUrl: safeUrl, fmtPrice: fmtPrice, fmtPct: fmtPct,
-    trend: trend, fmtDate: fmtDate, fmtDay: fmtDay, timeAgo: timeAgo, isinOk: isinOk, parseCsv: parseCsv,
-    mapCsvRows: mapCsvRows, sliceRange: sliceRange };
+    trend: trend, fmtDate: fmtDate, fmtDay: fmtDay, timeAgo: timeAgo, isinOk: isinOk, sliceRange: sliceRange };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.PII = api;
 })(typeof window !== "undefined" ? window : globalThis);
