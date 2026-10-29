@@ -57,6 +57,13 @@
     if (withTime !== false) { opts.hour = "2-digit"; opts.minute = "2-digit"; }
     return d.toLocaleString("it-IT", opts);
   }
+  /** Giorno breve per i calendari: "17 nov" (con l'anno solo se diverso da quello corrente). */
+  function fmtDay(iso, now) {
+    if (!/^\d{4}-\d{2}-\d{2}/.test(iso || "")) return "—";
+    var p = iso.slice(0, 10).split("-");
+    var s = Number(p[2]) + " " + MONTHS[Number(p[1]) - 1];
+    return Number(p[0]) === (now || new Date()).getFullYear() ? s : s + " " + p[0];
+  }
   var MONTHS = ["gen", "feb", "mar", "apr", "mag", "giu", "lug", "ago", "set", "ott", "nov", "dic"];
 
   function timeAgo(iso, now) {
@@ -140,7 +147,7 @@
   }
 
   var api = { safeUrl: safeUrl, escapeHtml: escapeHtml, fmtPrice: fmtPrice, fmtPct: fmtPct, fmtAbs: fmtAbs,
-    trend: trend, fmtDate: fmtDate, timeAgo: timeAgo, isinOk: isinOk, parseCsv: parseCsv,
+    trend: trend, fmtDate: fmtDate, fmtDay: fmtDay, timeAgo: timeAgo, isinOk: isinOk, parseCsv: parseCsv,
     mapCsvRows: mapCsvRows, sliceRange: sliceRange };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.PII = api;

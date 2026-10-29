@@ -196,30 +196,42 @@
   function demoBanner() {
     return h("div", { class: "banner demo" }, h("strong", null, "DATI DEMO: "), "alcuni valori mostrati sono simulati e non sono quotazioni reali.");
   }
-  function sourceLine(item) {
-    return h("div", { class: "meta" },
-      h("span", { class: "src" }, item.source || "Fonte non indicata"),
-      item.source_quality ? badge(item.source_quality, "q-" + item.source_quality.split("/")[0].replace(/\s/g, "")) : null,
-      h("span", null, " · " + (item.published_at ? L.timeAgo(item.published_at) : "data di pubblicazione non disponibile")));
+  function pctNum(v) { return String(v).replace(".", ","); }
+  function eventIds(e) { return e.instrument_ids || (e.instrument_id ? [e.instrument_id] : []); }
+  function namesOf(ids, names, max) {
+    var who = ids.map(function (i) { return names[i]; }).filter(Boolean);
+    max = max || 2;
+    return who.length > max ? who.slice(0, max).join(", ") + " +" + (who.length - max) : who.join(", ");
   }
+  /** Notizia in due righe: titolo e "fonte · quando · tipo". opts.forId = scheda di uno strumento; opts.names = elenco generale. */
   function newsCard(n, opts) {
     opts = opts || {};
+    var bits = [n.source || "Fonte non indicata", n.published_at ? L.timeAgo(n.published_at) : null, (n.category_labels || [])[0]];
+    var via = n.via_holdings || {};
+    if (opts.names) {  // prima gli strumenti citati direttamente, poi gli ETF che li contengono
+      var ids = n.instrument_ids || [];
+      bits.push(namesOf(ids.filter(function (i) { return !via[i]; }).concat(ids.filter(function (i) { return via[i]; })), opts.names, 1));
+    }
+    var viaTxt = opts.forId ? via[opts.forId] : null;
     return h("article", { class: "news" },
       h("h3", null, link(n.url, n.title)),
-      sourceLine(n),
-      opts.showInstruments && n.instrument_names ? h("div", { class: "chips" }, n.instrument_names.map(function (x) { return h("span", { class: "chip" }, x); })) : null,
-      n.category_labels && n.category_labels.length ? h("div", { class: "chips" }, n.category_labels.map(function (c) { return h("span", { class: "chip cat" }, c); })) : null,
-      h("p", { class: "why" }, h("span", { class: "label" }, "Perché può contare: "), n.why_relevant || "—"),
-      n.also_reported_by && n.also_reported_by.length ? h("p", { class: "muted small" }, "Ripresa anche da: " + n.also_reported_by.map(function (a) { return a.source; }).join(", ")) : null,
-      n.via_redirect ? h("p", { class: "muted tiny" }, "Il link passa da Google News e porta all'articolo originale di " + (n.source || "editore") + ".") : null);
+      h("div", { class: "meta" }, bits.filter(Boolean).join(" · ")),
+      viaTxt ? h("div", { class: "via" }, "Tramite " + viaTxt) : null);
   }
-  function eventRow(e) {
+  function eventRow(e, opts) {
+    opts = opts || {};
+    var sub = [];
+    if (opts.forId && e.weights && e.weights[opts.forId]) sub.push("pesa il " + pctNum(e.weights[opts.forId]) + "% del fondo");
+    if (opts.names) sub.push(namesOf(eventIds(e), opts.names, 3) || "Generale");
+    if (!e.confirmed) sub.push("data da confermare");
     return h("li", { class: "event" },
-      h("div", { class: "ev-date" }, L.fmtDate(e.date), e.date_end ? " – " + L.fmtDate(e.date_end) : ""),
-      h("div", null,
-        h("strong", null, e.title), e.instrument_name ? h("span", { class: "muted" }, " · " + e.instrument_name) : null,
-        h("div", { class: "small" }, badge(e.confirmed ? "data confermata" : "data non confermata", e.confirmed ? "ok" : "warn"), " ", e.certainty || ""),
-        h("div", { class: "tiny muted" }, "Fonte: ", e.url ? link(e.url, e.source) : (e.source || "—"))));
+      h("div", { class: "ev-date" }, L.fmtDay(e.date)),
+      h("div", null, e.url ? link(e.url, e.title) : e.title, sub.length ? h("div", { class: "tiny muted" }, sub.join(" · ")) : null));
+  }
+  function more(title, nodes, open) {
+    var d = h("details", { class: "more" }, h("summary", null, title), h("div", { class: "more-body" }, nodes));
+    if (open) d.open = true;
+    return d;
   }
   function actionButton(label, fn, cls) {
     var b = h("button", { class: "btn " + (cls || ""), type: "button" }, label);
@@ -243,62 +255,62 @@
       });
     }, cls);
   }
-  function statusStamp(status) {
-    var c = (status && status.components) || {};
-    function one(key, label) {
-      var s = c[key];
-      return h("span", { class: "stamp " + (s ? s.status : "none") }, label + ": " + (s && s.last_success ? L.timeAgo(s.last_success) : "mai"));
-    }
-    return h("div", { class: "stamps" }, one("prices", "Prezzi"), one("news", "Notizie"), one("analysis", "Analisi"));
-  }
   function errorBox(e) {
     return h("div", { class: "card error-card" }, h("h2", null, "Dati non disponibili"), h("p", null, e.message || String(e)),
       h("p", { class: "small" }, Backend.mode === "static"
         ? ["Per leggere i dati dal repository privato inserisci il token GitHub nelle ", h("a", { href: "#/impostazioni" }, "Impostazioni"), "."]
         : ["Riprova più tardi o controlla le ", h("a", { href: "#/impostazioni" }, "Impostazioni"), "."]));
   }
+  function instRow(r) {
+    var hot = r.flags.filter(function (f) { return f === "Nuova notizia" || f === "Evento imminente"; });
+    return h("a", { class: "inst", href: "#/strumento/" + encodeURIComponent(r.id) },
+      h("div", { class: "inst-main" },
+        h("div", { class: "inst-name" }, r.short || r.name, r.demo ? badge("DEMO", "demo") : null,
+          hot.length ? h("span", { class: "dot", title: hot.join(", "), "aria-label": hot.join(", ") }) : null),
+        h("div", { class: "tiny muted" }, (r.type === "etf" ? "ETF" : "Azione") + " · " + r.symbol)),
+      h("div", { class: "inst-px" },
+        h("div", { class: "px" }, L.fmtPrice(r.price, r.currency)),
+        r.stale || r.price == null ? h("div", { class: "tiny muted" }, r.price == null ? "non disponibile" : "non aggiornato") : pctEl(r.daily && r.daily.pct)));
+  }
+  function nameMap(ov) {
+    var names = {};
+    ((ov && ov.instruments) || []).forEach(function (r) { names[r.id] = r.short || r.name; });
+    return names;
+  }
 
   // ---------------------------------------------------------------- PAGINA 1: panoramica
   function pageOverview() {
     return Promise.all([load("overview.json"), load("status.json")]).then(function (r) {
-      var ov = r[0], st = r[1];
+      var ov = r[0], st = r[1] || {};
       var out = [h("header", { class: "page-head" },
-        h("div", null, h("h1", null, "Panoramica"), h("p", { class: "muted small" }, "Che cosa è importante sapere oggi sugli strumenti che segui."), statusStamp(st)),
-        refreshAction({}, "Aggiorna tutto"))];
-      if (!ov) { out.push(empty("Nessun dato ancora: premi «Aggiorna tutto» oppure aggiungi strumenti.")); return out; }
+        h("div", null, h("h1", null, "Panoramica"),
+          h("p", { class: "tiny muted" }, "Aggiornata " + L.timeAgo(st.last_refresh_at || (ov && ov.generated_at)))),
+        refreshAction({}, "Aggiorna", "ghost"))];
+      if (!ov) { out.push(empty("Nessun dato ancora: premi «Aggiorna» oppure aggiungi strumenti.")); return out; }
       if (ov.demo) out.push(demoBanner());
       if (ov.problems && ov.problems.length) {
-        out.push(h("section", { class: "card warn-card" }, h("h2", null, "Problemi di aggiornamento"),
-          h("ul", { class: "plain" }, ov.problems.map(function (p) { return h("li", null, p); }))));
+        out.push(h("details", { class: "notice" }, h("summary", null, ov.problems.length === 1 ? "1 avviso sugli aggiornamenti" : ov.problems.length + " avvisi sugli aggiornamenti"),
+          h("ul", { class: "plain small" }, ov.problems.map(function (p) { return h("li", null, p); }))));
       }
-      var ctx = section("Contesto di mercato", "Solo variazioni di prezzo degli indici, calcolate dai dati del provider. Nessuna interpretazione.");
       if (ov.context && ov.context.length) {
-        ctx.body.appendChild(h("div", { class: "ctx-grid" }, ov.context.map(function (c) {
-          return h("div", { class: "ctx" + (c.stale ? " stale" : "") }, h("div", { class: "ctx-name" }, c.name),
-            h("div", null, "1 seduta ", pctEl(c.daily && c.daily.pct)), h("div", null, "5 sedute ", pctEl(c.d5 && c.d5.pct)),
-            h("div", { class: "tiny muted" }, "al " + L.fmtDate(c.as_of, false) + (c.stale ? " · non aggiornato" : "")));
+        out.push(h("div", { class: "ctx-row", "aria-label": "Mercati oggi" }, ov.context.map(function (c) {
+          return h("div", { class: "ctx" + (c.stale ? " stale" : "") }, h("span", { class: "ctx-name" }, c.name.replace(/\s*\(.*\)$/, "")), pctEl(c.daily && c.daily.pct));
         })));
-        ctx.body.appendChild(h("p", { class: "tiny muted" }, "Fonte: " + (ov.context[0].provider || "provider prezzi") + ". Dati ritardati, non in tempo reale."));
-      } else ctx.body.appendChild(empty("Dati di contesto non disponibili."));
-      out.push(ctx);
-
-      var hot = (ov.instruments || []).filter(function (i) { return i.flags.indexOf("Nuova notizia") >= 0 || i.flags.indexOf("Evento imminente") >= 0; });
-      if (hot.length) {
-        var hs = section("Da guardare", "Strumenti con una notizia potenzialmente importante o un evento nei prossimi 7 giorni.");
-        hs.body.appendChild(h("div", { class: "chips" }, hot.map(function (i) {
-          return h("a", { class: "chip big", href: "#/strumento/" + encodeURIComponent(i.id) }, i.name + " — " + i.flags.filter(function (f) { return f !== "Nessuna notizia recente"; }).join(", "));
-        })));
-        out.push(hs);
       }
-      var ns = section("Notizie principali", "Ordinate per rilevanza stimata e freschezza. Apri il link per leggere la fonte originale.");
-      if (ov.top_news && ov.top_news.length) ov.top_news.forEach(function (n) { ns.body.appendChild(newsCard(n, { showInstruments: true })); });
-      else ns.body.appendChild(empty("Non sono state trovate notizie recenti sufficientemente rilevanti nelle fonti consultate."));
+      var names = nameMap(ov);
+      var is = section("I tuoi strumenti");
+      is.body.appendChild((ov.instruments || []).length ? h("div", { class: "inst-list" }, ov.instruments.map(instRow)) : empty("Non segui ancora nessuno strumento."));
+      out.push(is);
+      var ns = section("Notizie principali");
+      if (ov.top_news && ov.top_news.length) ov.top_news.slice(0, 5).forEach(function (n) { ns.body.appendChild(newsCard(n, { names: names })); });
+      else ns.body.appendChild(empty("Nessuna notizia rilevante negli ultimi giorni."));
+      ns.body.appendChild(h("a", { class: "more-link", href: "#/notizie" }, "Tutte le notizie →"));
       out.push(ns);
-      var es = section("Eventi nei prossimi 30 giorni");
-      if (ov.upcoming_events && ov.upcoming_events.length) es.body.appendChild(h("ul", { class: "events" }, ov.upcoming_events.map(eventRow)));
-      else es.body.appendChild(empty("Nessun evento verificato in calendario per i prossimi 30 giorni nelle fonti consultate."));
+      var es = section("Prossimi eventi");
+      if (ov.upcoming_events && ov.upcoming_events.length) es.body.appendChild(h("ul", { class: "events" }, ov.upcoming_events.slice(0, 5).map(function (e) { return eventRow(e, { names: names }); })));
+      else es.body.appendChild(empty("Nessun evento nei prossimi 30 giorni."));
       out.push(es);
-      out.push(h("p", { class: "tiny muted center" }, "Panoramica generata " + L.fmtDate(ov.generated_at) + " (ora italiana)."));
+      out.push(disclaimer());
       return out;
     });
   }
@@ -308,28 +320,18 @@
     return load("overview.json").then(function (ov) {
       var rows = (ov && ov.instruments) || [];
       var listEl = h("div", { class: "inst-list" });
-      var filter = h("input", { type: "search", class: "input", placeholder: "Cerca per nome o simbolo…", "aria-label": "Cerca strumento" });
+      var filter = h("input", { type: "search", class: "input", placeholder: "Cerca…", "aria-label": "Cerca strumento" });
       function draw() {
         var q = filter.value.trim().toLowerCase();
         listEl.textContent = "";
-        var shown = rows.filter(function (r) { return !q || r.name.toLowerCase().indexOf(q) >= 0 || r.symbol.toLowerCase().indexOf(q) >= 0; });
+        var shown = rows.filter(function (r) { return !q || (r.name + " " + r.symbol + " " + (r.short || "")).toLowerCase().indexOf(q) >= 0; });
         if (!shown.length) listEl.appendChild(empty(rows.length ? "Nessuno strumento corrisponde alla ricerca." : "Non segui ancora nessuno strumento. Aggiungine uno."));
-        shown.forEach(function (r) {
-          listEl.appendChild(h("a", { class: "inst", href: "#/strumento/" + encodeURIComponent(r.id) },
-            h("div", { class: "inst-main" },
-              h("div", { class: "inst-name" }, r.name, r.demo ? badge("DEMO", "demo") : null, r.example ? badge("esempio", "muted-b") : null),
-              h("div", { class: "muted small" }, r.symbol + " · " + (r.type === "etf" ? "ETF" : "Azione")),
-              h("div", { class: "chips" }, r.flags.map(function (f) { return h("span", { class: "chip flag" }, f); }))),
-            h("div", { class: "inst-px" },
-              h("div", { class: "px" }, L.fmtPrice(r.price, r.currency)),
-              pctEl(r.daily && r.daily.pct),
-              h("div", { class: "tiny muted" }, r.price == null ? "non disponibile" : (r.price_kind === "intraday" ? "in seduta, ritardato" : "chiusura " + L.fmtDate(r.as_of, false))))));
-        });
+        shown.forEach(function (r) { listEl.appendChild(instRow(r)); });
       }
       filter.addEventListener("input", draw);
       draw();
-      return [h("header", { class: "page-head" }, h("div", null, h("h1", null, "I miei strumenti"), h("p", { class: "muted small" }, rows.length + " strumenti seguiti. Nessun dato patrimoniale viene salvato.")),
-        h("a", { class: "btn primary", href: "#/aggiungi" }, "+ Aggiungi")), ov && ov.demo ? demoBanner() : null, filter, listEl];
+      return [h("header", { class: "page-head" }, h("h1", null, "I miei strumenti"), h("a", { class: "btn primary", href: "#/aggiungi" }, "+ Aggiungi")),
+        ov && ov.demo ? demoBanner() : null, rows.length > 6 ? filter : null, listEl];
     });
   }
 
@@ -455,7 +457,7 @@
       ranges.forEach(function (r) { btns.appendChild(h("button", { type: "button", class: r === current ? "on" : "", onclick: function () { current = r; Prefs.set("range", r); draw(); } }, r)); });
       var pts = L.sliceRange(bars, current);
       if (pts.length < 2) { svgBox.appendChild(empty("Dati insufficienti per il grafico.")); return; }
-      var W = 600, H = 180, P = 6;
+      var W = 600, H = 160, P = 6;
       var vals = pts.map(function (b) { return b.close; });
       var min = Math.min.apply(null, vals), max = Math.max.apply(null, vals);
       var span = max - min || 1;
@@ -475,14 +477,11 @@
       svg.appendChild(path);
       svgBox.appendChild(svg);
       svgBox.appendChild(h("div", { class: "chart-foot tiny muted" },
-        h("span", null, L.fmtDate(pts[0].date) + ": " + L.fmtPrice(pts[0].close, currency)),
-        h("span", null, "min " + L.fmtPrice(min) + " · max " + L.fmtPrice(max)),
-        h("span", null, L.fmtDate(pts[pts.length - 1].date) + ": " + L.fmtPrice(pts[pts.length - 1].close, currency))));
+        h("span", null, L.fmtDay(pts[0].date)), h("span", null, "min " + L.fmtPrice(min) + " · max " + L.fmtPrice(max)), h("span", null, L.fmtDay(pts[pts.length - 1].date))));
     }
     draw();
     holder.appendChild(btns);
     holder.appendChild(svgBox);
-    holder.appendChild(h("p", { class: "tiny muted" }, "Chiusure giornaliere. Grafico indicativo, secondario rispetto a notizie e spiegazioni."));
     return holder;
   }
 
@@ -495,234 +494,204 @@
       return s.url ? h("a", { href: s.url, title: (s.title || "") + " — " + (s.source || "") }, label) : h("span", { title: s.title || "" }, label);
     }));
   }
+  function bullets(list, reg) {
+    return h("ul", { class: "plain" }, list.map(function (f) { return typeof f === "string" ? h("li", null, f) : h("li", null, f.testo, " ", refsEl(f.fonti, reg)); }));
+  }
 
-  function marketSection(inst, q) {
-    var s = section("A · Dati di mercato");
-    if (!q) { s.body.appendChild(empty("Prezzi non disponibili per questo strumento: il provider non ha restituito dati (simbolo non coperto o errore). Nessun valore viene stimato.")); return s; }
+  /** In alto nella scheda: prezzo, variazione e poche cifre essenziali. */
+  function priceCard(q) {
+    var s = h("section", { class: "card" });
+    if (!q) { s.appendChild(empty("Prezzi non disponibili per questo strumento.")); return s; }
     var m = q.metrics || {};
-    if (q.demo) s.body.appendChild(demoBanner());
-    if (q.stale) s.body.appendChild(h("div", { class: "banner warn" }, "Dato non aggiornato: l'ultimo prezzo disponibile è del " + L.fmtDate(q.last_bar_date) + "."));
-    if (q.last_error) s.body.appendChild(h("div", { class: "banner warn" }, "L'ultimo tentativo di aggiornamento (" + L.fmtDate(q.last_error_at) + ") è fallito: mostro l'ultimo dato valido. Dettaglio: " + q.last_error));
-    s.body.appendChild(h("div", { class: "price-hero" },
-      h("div", { class: "px-big" }, L.fmtPrice(q.price, q.currency)),
-      m.daily ? h("div", { class: "pct-big " + L.trend(m.daily.pct) }, L.fmtPct(m.daily.pct) + " (" + L.fmtAbs(m.daily.abs) + ")") : null,
-      h("div", { class: "small" }, q.price_kind_label),
-      h("div", { class: "tiny muted" }, (q.session && q.session.label) || "", q.exchange_full ? " · " + q.exchange_full : "")));
-    function row(label, c, sub) {
-      return h("tr", null, h("th", null, label), h("td", null, c ? pctEl(c.pct) : "—"),
-        h("td", { class: "tiny muted" }, c ? "dal " + L.fmtDate(c.from_date) + " (" + L.fmtPrice(c.from_price) + ") al " + L.fmtDate(c.to_date) : (sub || "non disponibile")));
-    }
-    var t = h("table", { class: "kv" },
-      row("1 seduta", m.daily), row("5 sedute", m.d5), row("1 mese", m.m1), row("Da inizio anno", m.ytd),
-      m.w52 ? h("tr", null, h("th", null, "52 settimane"), h("td", null, "max " + L.fmtPrice(m.w52.high) + " · min " + L.fmtPrice(m.w52.low)),
-        h("td", { class: "tiny muted" }, "max il " + L.fmtDate(m.w52.high_date) + ", min il " + L.fmtDate(m.w52.low_date) + (m.w52.complete ? "" : " (storico parziale)"))) : null,
-      m.volume ? h("tr", null, h("th", null, "Volume"), h("td", null, String(m.volume.ratio).replace(".", ",") + "× media"), h("td", { class: "tiny muted" }, m.volume.criterion)) : null);
-    s.body.appendChild(t);
-    (m.notes || []).forEach(function (n) { s.body.appendChild(h("p", { class: "tiny muted" }, n)); });
-    var det = h("details", { class: "chart-details" }, h("summary", null, "Mostra grafico"), chart(q.bars || [], q.currency));
-    if (window.innerWidth >= 700) det.open = true;
-    s.body.appendChild(det);
-    s.body.appendChild(h("p", { class: "tiny muted" }, "Fonte: ", q.provider_url ? link(q.provider_url, q.provider_label) : q.provider_label,
-      " · aggiornato " + L.fmtDate(q.fetched_at) + ". " + (q.disclaimer || "") + " Criterio variazioni: chiusure giornaliere confrontate alle date indicate."));
+    if (q.demo) s.appendChild(demoBanner());
+    if (q.stale) s.appendChild(h("div", { class: "banner warn" }, "Ultimo prezzo disponibile: " + L.fmtDate(q.last_bar_date) + "."));
+    s.appendChild(h("div", { class: "price-hero" },
+      h("span", { class: "px-big" }, L.fmtPrice(q.price, q.currency)),
+      m.daily ? h("span", { class: "pct-big " + L.trend(m.daily.pct) }, L.fmtPct(m.daily.pct)) : null,
+      h("div", { class: "tiny muted" }, q.session && q.session.price_kind === "intraday" ? "In seduta, ritardato" : "Chiusura del " + L.fmtDay(q.last_bar_date))));
+    s.appendChild(h("div", { class: "periods" }, [["1 settimana", m.d5], ["1 mese", m.m1], ["Da inizio anno", m.ytd]].map(function (p) {
+      return h("div", null, h("div", { class: "tiny muted" }, p[0]), p[1] ? pctEl(p[1].pct) : h("span", { class: "muted" }, "—"));
+    })));
+    var det = more("Grafico", chart(q.bars || [], q.currency), window.innerWidth >= 700);
+    s.appendChild(det);
     return s;
   }
 
-  function etfSection(inst, fund) {
-    var s = section("Scheda ETF", "Dati da fonti non ufficiali: verifica sempre KID e factsheet dell'emittente.");
-    var kv = h("table", { class: "kv" },
-      h("tr", null, h("th", null, "Emittente"), h("td", { colspan: "2" }, inst.issuer || (fund && fund.fund_family) || "non disponibile")),
-      h("tr", null, h("th", null, "Indice replicato"), h("td", { colspan: "2" }, inst.index_name || "non verificato (aggiungilo nella modifica dello strumento)")),
-      h("tr", null, h("th", null, "ISIN"), h("td", { colspan: "2" }, inst.isin || "—")),
-      h("tr", null, h("th", null, "Costi correnti (TER)"), h("td", { colspan: "2" }, fund && fund.ter_pct != null ? String(fund.ter_pct).replace(".", ",") + "%" : "non disponibile dal provider")),
-      h("tr", null, h("th", null, "Categoria"), h("td", { colspan: "2" }, (fund && fund.category) || "non disponibile")),
-      fund && fund.asset_classes ? h("tr", null, h("th", null, "Tipologia"), h("td", { colspan: "2" }, Object.keys(fund.asset_classes).filter(function (k) { return fund.asset_classes[k] >= 1; }).map(function (k) {
-        return ({ stockPosition: "azioni", bondPosition: "obbligazioni", cashPosition: "liquidità", otherPosition: "altro", preferredPosition: "privilegiate", convertiblePosition: "convertibili" }[k] || k) + " " + String(fund.asset_classes[k]).replace(".", ",") + "%";
-      }).join(" · ") || "non disponibile")) : null);
-    s.body.appendChild(kv);
+  function marketDetails(q) {
+    var m = q.metrics || {};
+    function row(label, c) {
+      return h("tr", null, h("th", null, label), h("td", null, c ? pctEl(c.pct) : "—"), h("td", { class: "tiny muted" }, c ? "dal " + L.fmtDay(c.from_date) + " al " + L.fmtDay(c.to_date) : ""));
+    }
+    return [h("table", { class: "kv" },
+      row("1 seduta", m.daily), row("5 sedute", m.d5), row("1 mese", m.m1), row("Da inizio anno", m.ytd),
+      m.w52 ? h("tr", null, h("th", null, "52 settimane"), h("td", { colspan: "2" }, "max " + L.fmtPrice(m.w52.high) + " · min " + L.fmtPrice(m.w52.low))) : null,
+      m.volume ? h("tr", null, h("th", null, "Volume"), h("td", { colspan: "2" }, pctNum(m.volume.ratio) + "× la media")) : null),
+      q.last_error ? h("p", { class: "small" }, "Ultimo aggiornamento non riuscito (" + L.fmtDate(q.last_error_at) + "): mostro l'ultimo dato valido.") : null,
+      h("p", { class: "tiny muted" }, "Fonte: ", q.provider_url ? link(q.provider_url, q.provider_label) : q.provider_label, " · " + L.fmtDate(q.fetched_at) + ". " + (q.disclaimer || ""))];
+  }
+
+  function bar(pct) {
+    var fill = h("i");
+    fill.style.width = Math.max(0, Math.min(100, pct)) + "%"; // proprietà CSSOM: consentita dalla CSP, l'attributo style no
+    return h("span", { class: "bar" }, fill);
+  }
+
+  function etfDetails(inst, fund, index) {
+    var out = [h("table", { class: "kv" },
+      h("tr", null, h("th", null, "Indice"), h("td", null, inst.index_name || index || "—")),
+      h("tr", null, h("th", null, "Emittente"), h("td", null, inst.issuer || (fund && fund.fund_family) || "—")),
+      h("tr", null, h("th", null, "Costi (TER)"), h("td", null, fund && fund.ter_pct != null ? pctNum(fund.ter_pct) + "%" : "—")),
+      h("tr", null, h("th", null, "ISIN"), h("td", null, inst.isin || "—")))];
     if (fund && fund.top_holdings && fund.top_holdings.length) {
-      s.body.appendChild(h("h3", null, "Principali posizioni" + (fund.top10_weight_pct ? " (prime 10 = " + String(fund.top10_weight_pct).replace(".", ",") + "% del fondo)" : "")));
-      s.body.appendChild(h("ol", { class: "holdings" }, fund.top_holdings.map(function (x) { return h("li", null, x.name + " ", h("span", { class: "muted" }, String(x.weight_pct).replace(".", ",") + "%")); })));
-    } else s.body.appendChild(empty("Composizione non disponibile dal provider."));
-    if (fund && fund.sectors && fund.sectors.length) {
-      var SECT = { technology: "Tecnologia", financial_services: "Finanza", healthcare: "Salute", consumer_cyclical: "Consumi ciclici", industrials: "Industria", communication_services: "Comunicazioni", consumer_defensive: "Consumi difensivi", energy: "Energia", basic_materials: "Materie prime", utilities: "Servizi pubblici", realestate: "Immobiliare" };
-      s.body.appendChild(h("h3", null, "Settori"));
-      s.body.appendChild(h("div", { class: "bars" }, fund.sectors.slice(0, 8).map(function (x) {
-        return h("div", { class: "barrow" }, h("span", null, SECT[x.name] || x.name), h("span", { class: "bar" }, h("i", { style: "width:" + Math.min(100, x.weight_pct) + "%" })), h("span", { class: "muted" }, String(x.weight_pct).replace(".", ",") + "%"));
+      out.push(h("h3", null, "Principali posizioni"));
+      out.push(h("div", { class: "bars" }, fund.top_holdings.slice(0, 10).map(function (x) {
+        return h("div", { class: "barrow" }, h("span", null, x.name), bar(x.weight_pct * 6), h("span", { class: "muted" }, pctNum(x.weight_pct) + "%"));
       })));
     }
-    s.body.appendChild(h("p", { class: "tiny muted" }, "Aree geografiche e copertura valutaria non sono fornite dal provider gratuito. Fonte: ",
-      fund && fund.url ? link(fund.url, fund.source) : "—", fund ? " · " + L.fmtDate(fund.retrieved_at) : ""));
-    return s;
-  }
-
-  function analysisSections(inst, rec, news, events, status, newsMeta) {
-    var out = [];
-    if (!rec) {
-      out.push(h("section", { class: "card" }, h("h2", null, "Analisi"), empty("Analisi non ancora disponibile. Premi «Rigenera analisi» per crearla.")));
-      return out;
+    if (fund && fund.sectors && fund.sectors.length) {
+      var SECT = { technology: "Tecnologia", financial_services: "Finanza", healthcare: "Salute", consumer_cyclical: "Consumi ciclici", industrials: "Industria", communication_services: "Comunicazioni", consumer_defensive: "Consumi difensivi", energy: "Energia", basic_materials: "Materie prime", utilities: "Servizi pubblici", realestate: "Immobiliare" };
+      out.push(h("h3", null, "Settori"));
+      out.push(h("div", { class: "bars" }, fund.sectors.slice(0, 6).map(function (x) {
+        return h("div", { class: "barrow" }, h("span", null, SECT[x.name] || x.name), bar(x.weight_pct), h("span", { class: "muted" }, pctNum(x.weight_pct) + "%"));
+      })));
     }
-    var a = rec.analysis;
-    var reg = {};
-    (rec.sources || []).forEach(function (s) { reg[s.ref] = s; });
-    var who = rec.kind === "ai" ? "Analisi AI (" + rec.provider + (rec.model ? ", " + rec.model : "") + ")" : "Sintesi automatica senza AI";
-    var stamp = h("p", { class: "tiny muted" }, who + " · elaborata " + L.fmtDate(rec.generated_at) + " · prezzi al " + L.fmtDate(rec.prices_as_of, false));
-
-    // B
-    var b = section("B · In breve — cosa devo sapere?");
-    if (rec.demo) b.body.appendChild(demoBanner());
-    if (rec.last_failed_attempt) b.body.appendChild(h("div", { class: "banner warn" }, "L'ultimo tentativo di nuova analisi (" + L.fmtDate(rec.last_failed_attempt.at) + ") è fallito; resta valida questa del " + L.fmtDate(rec.generated_at) + ". Motivo: " + rec.last_failed_attempt.error));
-    b.body.appendChild(h("p", { class: "lead" }, a.in_breve || "Evidenze insufficienti per una sintesi."));
-    b.body.appendChild(stamp);
-    out.push(b);
-
-    // C
-    var c = section("C · Che cosa è successo?", "Ultimi " + (rec.news_window_days || 7) + " giorni.");
-    if (a.cosa_e_successo && a.cosa_e_successo.length) {
-      a.cosa_e_successo.forEach(function (e) {
-        var first = reg[e.fonti[0]] || {};
-        c.body.appendChild(h("article", { class: "news" },
-          h("h3", null, first.url ? link(first.url, e.titolo || first.title) : (e.titolo || first.title)),
-          h("div", { class: "meta" }, h("span", { class: "src" }, first.source || ""), h("span", null, " · pubblicata " + (first.published_at ? L.fmtDate(first.published_at) : "data non disponibile")), refsEl(e.fonti, reg)),
-          e.sintesi ? h("p", null, e.sintesi) : null,
-          e.rilevanza ? h("p", { class: "why" }, h("span", { class: "label" }, "Perché conta: "), e.rilevanza) : null,
-          e.impatto_osservato ? h("p", { class: "small" }, h("span", { class: "label" }, "Prezzo osservato: "), e.impatto_osservato) : null));
-      });
-    } else {
-      var checked = (rec.sources_checked || []).join(", ") || "fonti configurate";
-      c.body.appendChild(empty("Non sono state trovate notizie recenti sufficientemente rilevanti nelle fonti consultate (" + checked + "; ultimi " + (rec.news_window_days || 7) + " giorni)."));
-    }
-    if (news.length) {
-      c.body.appendChild(h("details", null, h("summary", null, "Tutte le notizie raccolte (" + news.length + ")"),
-        news.map(function (n) { return newsCard(n); })));
-    }
-    out.push(c);
-
-    // D
-    var pm = a.perche_mosso || {};
-    var d = section("D · Perché il prezzo potrebbe essersi mosso?");
-    d.body.appendChild(h("h3", null, badge("FATTO", "fact"), " Fatti confermati"));
-    d.body.appendChild(pm.fatti && pm.fatti.length ? h("ul", { class: "plain" }, pm.fatti.map(function (f) { return h("li", null, f.testo, " ", refsEl(f.fonti, reg)); })) : empty("Nessun fatto verificabile disponibile."));
-    d.body.appendChild(h("h3", null, badge("INTERPRETAZIONE", "interp"), " Possibili spiegazioni"));
-    d.body.appendChild(pm.possibili_spiegazioni && pm.possibili_spiegazioni.length ? h("ul", { class: "plain" }, pm.possibili_spiegazioni.map(function (f) { return h("li", null, f.testo, " ", refsEl(f.fonti, reg)); })) : empty("Nessuna spiegazione supportata da evidenze."));
-    d.body.appendChild(h("h3", null, badge("DA VERIFICARE", "warn"), " Fattori non verificati o informazioni mancanti"));
-    d.body.appendChild(pm.non_verificati && pm.non_verificati.length ? h("ul", { class: "plain" }, pm.non_verificati.map(function (t) { return h("li", null, t); })) : empty("—"));
-    if (!pm.causa_determinabile) d.body.appendChild(h("p", { class: "small" }, "La causa del movimento non è determinabile con le informazioni disponibili."));
-    out.push(d);
-
-    // E
-    var p = a.prospettive || {};
-    var e = section("E · Prospettive future", "Analisi speculativa: scenari ipotetici, non previsioni né raccomandazioni.");
-    e.body.appendChild(h("div", { class: "outlook o-" + (p.valutazione || "non_valutabile") },
-      h("div", { class: "outlook-label" }, p.valutazione_label || "Prospettive non valutabili"),
-      h("div", { class: "small" }, "Orizzonte: " + (p.orizzonte || "—")),
-      h("div", { class: "small" }, "Qualità delle evidenze: ", h("strong", null, p.qualita_evidenze || "bassa"), p.motivazione_qualita ? " — " + p.motivazione_qualita : ""),
-      h("div", { class: "tiny muted" }, "La qualità delle evidenze misura quanto sono solide le fonti, non la probabilità che uno scenario si avveri.")));
-    if (p.spiegazione) e.body.appendChild(h("p", null, p.spiegazione));
-    var sc = p.scenari || {};
-    var LABELS = { rialzista: "Scenario rialzista", centrale: "Scenario centrale", ribassista: "Scenario ribassista" };
-    var FIELDS = { fattori: "Cosa potrebbe favorirlo", rischi: "Rischi", segnali: "Segnali da monitorare", invalidazione: "Cosa lo invaliderebbe", eventi_spostamento: "Eventi che potrebbero spostarlo" };
-    var any = false;
-    ["rialzista", "centrale", "ribassista"].forEach(function (k) {
-      var s = sc[k];
-      if (!s) return;
-      any = true;
-      e.body.appendChild(h("div", { class: "scenario s-" + k },
-        h("h3", null, badge("SCENARIO IPOTETICO", "scen"), " " + LABELS[k], " ", refsEl(s.fonti, reg)),
-        s.descrizione ? h("p", null, s.descrizione) : null,
-        Object.keys(FIELDS).filter(function (f) { return s[f] && s[f].length; }).map(function (f) {
-          return h("div", null, h("div", { class: "label small" }, FIELDS[f]), h("ul", { class: "plain small" }, s[f].map(function (t) { return h("li", null, t); })));
-        })));
-    });
-    if (!any) e.body.appendChild(empty(rec.kind === "ai" ? "Le informazioni disponibili non bastano per costruire scenari in modo responsabile." : "Scenari non disponibili: richiedono un modello AI. Premi «Rigenera analisi» quando un modello è configurato."));
-    out.push(e);
-
-    // F
-    var f = section("F · Cosa tenere d'occhio");
-    var watch = (a.da_monitorare || []);
-    var list = h("ul", { class: "events" });
-    watch.forEach(function (w) {
-      list.appendChild(h("li", { class: "event" }, h("div", { class: "ev-date" }, w.data ? L.fmtDate(w.data) : "data n.d."),
-        h("div", null, h("strong", null, w.evento), " ", refsEl(w.fonti, reg), w.perche ? h("div", { class: "small" }, w.perche) : null,
-          h("div", { class: "small" }, badge(w.data ? (w.data_confermata ? "data confermata" : "data non confermata") : "senza data verificata", w.data_confermata ? "ok" : "warn")))));
-    });
-    events.forEach(function (ev) {
-      if (watch.some(function (w) { return w.data === ev.date && w.evento && ev.title && w.evento.toLowerCase().indexOf(ev.title.toLowerCase().slice(0, 12)) >= 0; })) return;
-      list.appendChild(eventRow(ev));
-    });
-    f.body.appendChild(list.childNodes.length ? list : empty("Nessun evento futuro verificato nelle fonti consultate."));
-    out.push(f);
-    out.push({ late: true, rec: rec, reg: reg, status: status, newsMeta: newsMeta });
+    out.push(h("p", { class: "tiny muted" }, "Dati non ufficiali (", fund && fund.url ? link(fund.url, fund.source) : "provider", "): verifica sempre KID e factsheet dell'emittente."));
     return out;
   }
 
-  function sourcesSection(inst, rec, q, status, newsMeta, history) {
-    var g = section("G · Fonti e aggiornamento");
+  function storyDetails(a, reg) {
+    return a.cosa_e_successo.map(function (e) {
+      var first = reg[e.fonti[0]] || {};
+      return h("div", { class: "story" },
+        h("strong", null, first.url ? link(first.url, e.titolo || first.title) : (e.titolo || first.title)), " ", refsEl(e.fonti, reg),
+        e.sintesi ? h("p", { class: "small" }, e.sintesi) : null,
+        e.rilevanza ? h("p", { class: "small muted" }, e.rilevanza) : null);
+    });
+  }
+
+  function whyDetails(pm, reg) {
+    var out = [];
+    if (pm.fatti && pm.fatti.length) out.push(h("h3", null, "Fatti"), bullets(pm.fatti, reg));
+    if (pm.possibili_spiegazioni && pm.possibili_spiegazioni.length) out.push(h("h3", null, "Possibili spiegazioni"), bullets(pm.possibili_spiegazioni, reg));
+    if (pm.non_verificati && pm.non_verificati.length) out.push(h("h3", null, "Da verificare"), bullets(pm.non_verificati, reg));
+    if (!pm.causa_determinabile) out.push(h("p", { class: "small muted" }, "La causa del movimento non è determinabile con certezza."));
+    return out;
+  }
+
+  function scenarioDetails(p, reg) {
+    var out = [h("div", { class: "outlook o-" + (p.valutazione || "non_valutabile") },
+      h("div", { class: "outlook-label" }, p.valutazione_label || "Prospettive non valutabili"),
+      h("div", { class: "tiny muted" }, [p.orizzonte ? "Orizzonte " + p.orizzonte : null, "evidenze " + (p.qualita_evidenze || "basse")].filter(Boolean).join(" · ")))];
+    if (p.spiegazione) out.push(h("p", { class: "small" }, p.spiegazione));
+    var sc = p.scenari || {};
+    var LABELS = { rialzista: "Se va meglio", centrale: "Scenario centrale", ribassista: "Se va peggio" };
+    ["rialzista", "centrale", "ribassista"].forEach(function (k) {
+      var s = sc[k];
+      if (!s) return;
+      var pts = (s.fattori || []).concat(s.rischi || []).slice(0, 3);
+      out.push(h("div", { class: "scenario s-" + k }, h("strong", null, LABELS[k]), " ", refsEl(s.fonti, reg),
+        s.descrizione ? h("p", { class: "small" }, s.descrizione) : null,
+        pts.length ? h("ul", { class: "plain small" }, pts.map(function (t) { return h("li", null, t); })) : null));
+    });
+    out.push(h("p", { class: "tiny muted" }, "Scenari ipotetici, non previsioni né raccomandazioni."));
+    return out;
+  }
+
+  function sourcesDetails(inst, rec, history) {
+    var out = [];
     if (rec) {
-      g.body.appendChild(h("ol", { class: "sources" }, (rec.sources || []).map(function (s) {
-        return h("li", null, h("span", { class: "ref" }, s.ref), " ", s.url ? link(s.url, s.title) : s.title,
-          h("span", { class: "muted small" }, " — " + (s.source || "") + (s.published_at ? ", " + L.fmtDate(s.published_at) : "")));
+      out.push(h("p", { class: "small" }, (rec.kind === "ai" ? "Analisi AI (" + (rec.model || rec.provider) + ")" : "Sintesi automatica senza AI") + " del " + L.fmtDate(rec.generated_at) + "."));
+      out.push(h("ol", { class: "sources" }, (rec.sources || []).map(function (s) {
+        return h("li", null, h("span", { class: "ref" }, s.ref), " ", s.url ? link(s.url, s.title) : s.title, h("span", { class: "muted tiny" }, " — " + (s.source || "")));
       })));
-      if (rec.warnings && rec.warnings.length) {
-        g.body.appendChild(h("details", null, h("summary", null, "Controlli automatici sull'analisi (" + rec.warnings.length + ")"),
-          h("ul", { class: "plain small" }, rec.warnings.map(function (w) { return h("li", null, w); }))));
-      }
-      if (rec.analysis && rec.analysis.limiti && rec.analysis.limiti.length) {
-        g.body.appendChild(h("h3", null, "Limiti dell'analisi"));
-        g.body.appendChild(h("ul", { class: "plain small" }, rec.analysis.limiti.map(function (t) { return h("li", null, t); })));
-      }
-    }
-    var comps = (status && status.components) || {};
-    g.body.appendChild(h("table", { class: "kv small" },
-      h("tr", null, h("th", null, "Analisi elaborata"), h("td", null, rec ? L.fmtDate(rec.generated_at) : "—")),
-      h("tr", null, h("th", null, "Prezzi aggiornati"), h("td", null, q ? L.fmtDate(q.fetched_at) + " (dato del " + L.fmtDate(q.as_of) + ")" : "—")),
-      h("tr", null, h("th", null, "Notizie raccolte"), h("td", null, newsMeta && newsMeta.updated_at ? L.fmtDate(newsMeta.updated_at) : "—")),
-      h("tr", null, h("th", null, "Ultimo errore"), h("td", null, ["prices", "news", "analysis"].map(function (k) { return comps[k] && comps[k].errors && comps[k].errors.length ? k + ": " + comps[k].errors.length + " errori" : null; }).filter(Boolean).join(" · ") || "nessuno"))));
-    if (newsMeta && newsMeta.sources_checked) {
-      g.body.appendChild(h("details", null, h("summary", null, "Fonti di notizie consultate"),
-        h("ul", { class: "plain small" }, newsMeta.sources_checked.map(function (s) { return h("li", null, (s.ok ? "✓ " : "✗ ") + s.name + (s.ok ? " (" + s.items + " elementi)" : " — non raggiungibile: " + (s.error || ""))); }))));
+      if (rec.analysis && rec.analysis.limiti && rec.analysis.limiti.length) out.push(h("h3", null, "Limiti"), bullets(rec.analysis.limiti));
+      if (rec.warnings && rec.warnings.length) out.push(h("h3", null, "Controlli automatici"), bullets(rec.warnings));
     }
     if (history && history.items && history.items.length > 1) {
-      var hist = h("details", null, h("summary", null, "Storico analisi (" + history.items.length + ")"));
       var view = h("div");
-      hist.appendChild(h("ul", { class: "plain small" }, history.items.map(function (it) {
+      out.push(h("h3", null, "Analisi precedenti"));
+      out.push(h("ul", { class: "plain small" }, history.items.slice(0, 10).map(function (it) {
         return h("li", null, h("button", { type: "button", class: "linklike", onclick: function () {
           load("analysis/" + inst.id + "/" + it.file).then(function (old) {
             view.textContent = "";
-            view.appendChild(h("div", { class: "history-view" }, h("strong", null, "Analisi del " + L.fmtDate(old.generated_at) + " — " + old.analysis.prospettive.valutazione_label),
-              h("p", null, old.analysis.in_breve), h("p", { class: "tiny muted" }, "Prezzi al " + L.fmtDate(old.prices_as_of, false) + " · " + (old.kind === "ai" ? old.provider : "senza AI"))));
+            view.appendChild(h("div", { class: "history-view" }, h("strong", null, L.fmtDate(old.generated_at) + " — " + old.analysis.prospettive.valutazione_label), h("p", null, old.analysis.in_breve)));
           });
-        } }, L.fmtDate(it.generated_at)), " — " + it.valutazione + " (" + (it.kind === "ai" ? (it.model || it.provider) : "senza AI") + ")");
+        } }, L.fmtDate(it.generated_at)), " — " + it.valutazione);
       })));
-      hist.appendChild(view);
-      g.body.appendChild(hist);
+      out.push(view);
     }
-    return g;
+    return out;
   }
 
   function pageDetail(id) {
     var base = "analysis/" + id + "/";
     return Promise.all([load("instruments.json"), load("quotes/" + id + ".json"), load(base + "latest.json"), load("news.json"),
-      load("events.json"), load("status.json"), load(base + "history.json")]).then(function (r) {
+      load("events.json"), load(base + "history.json"), load("overview.json")]).then(function (r) {
       var inst = ((r[0] && r[0].instruments) || []).filter(function (i) { return i.id === id; })[0];
       if (!inst) return [empty("Strumento non trovato."), h("a", { href: "#/strumenti" }, "← Torna all'elenco")];
-      var q = r[1], rec = r[2], newsMeta = r[3] || {}, evs = (r[4] && r[4].items) || [], status = r[5], history = r[6];
+      var q = r[1], rec = r[2], newsMeta = r[3] || {}, evs = (r[4] && r[4].items) || [], history = r[5];
+      var row = (((r[6] || {}).instruments) || []).filter(function (x) { return x.id === id; })[0] || {};
       var news = (newsMeta.items || []).filter(function (n) { return n.instrument_ids.indexOf(id) >= 0; });
+      // per un ETF prima le notizie su indice e mercato, poi quelle sulle singole partecipazioni
+      news = news.filter(function (n) { return !(n.via_holdings || {})[id]; }).concat(news.filter(function (n) { return (n.via_holdings || {})[id]; }));
       var today = new Date().toISOString().slice(0, 10);
-      var events = evs.filter(function (e) { return e.instrument_id === id && e.date >= today; });
+      var events = evs.filter(function (e) { return eventIds(e).indexOf(id) >= 0 && e.date >= today; });
       var fundP = inst.type === "etf" ? load("funds/" + id + ".json").catch(function () { return null; }) : Promise.resolve(null);
       return fundP.then(function (fund) {
-        var out = [h("p", { class: "crumbs" }, h("a", { href: "#/strumenti" }, "← I miei strumenti")),
-          h("header", { class: "page-head detail" },
-            h("div", null, h("h1", null, inst.name), h("p", { class: "muted small" }, [inst.symbol, inst.type === "etf" ? "ETF" : "Azione", inst.isin, inst.exchange, inst.currency].filter(Boolean).join(" · "))),
-            h("div", { class: "actions" },
-              refreshAction({ components: ["prices", "news", "events"], instrument: id, force: true }, "Aggiorna dati", "ghost"),
-              refreshAction({ components: ["analysis"], instrument: id, force: true }, "Rigenera analisi", "primary"),
-              h("a", { class: "btn ghost", href: "#/modifica/" + encodeURIComponent(id) }, "Modifica")))];
-        out.push(marketSection(inst, q));
-        var parts = analysisSections(inst, rec, news, events, status, newsMeta);
-        parts.forEach(function (p) { if (!p.late) out.push(p); });
-        if (inst.type === "etf") out.splice(3, 0, etfSection(inst, fund));
-        out.push(sourcesSection(inst, rec, q, status, newsMeta, history));
+        var a = (rec && rec.analysis) || {};
+        var reg = {};
+        ((rec && rec.sources) || []).forEach(function (s) { reg[s.ref] = s; });
+        var out = [h("p", { class: "crumbs" }, h("a", { href: "#/strumenti" }, "← Strumenti")),
+          h("header", { class: "page-head" },
+            h("div", null, h("h1", null, row.short || inst.name),
+              h("p", { class: "tiny muted" }, [inst.type === "etf" ? "ETF" : "Azione", inst.symbol, row.short && row.short !== inst.name ? inst.name : null].filter(Boolean).join(" · "))),
+            refreshAction({ components: ["prices", "funds", "events", "news", "analysis"], instrument: id }, "Aggiorna", "ghost"))];
+        out.push(priceCard(q));
+
+        var b = section("In breve");
+        if (rec && rec.demo) b.body.appendChild(demoBanner());
+        var lead = h("p", { class: "lead clamp" }, a.in_breve || "Analisi non ancora disponibile.");
+        b.body.appendChild(lead);
+        if ((a.in_breve || "").length > 320) {
+          b.body.appendChild(h("button", { type: "button", class: "linklike small", onclick: function (ev) {
+            var open = lead.classList.toggle("clamp");
+            ev.target.textContent = open ? "Leggi tutto" : "Riduci";
+          } }, "Leggi tutto"));
+        }
+        if (rec) b.body.appendChild(h("p", { class: "tiny muted" }, (rec.kind === "ai" ? "Analisi AI" : "Sintesi automatica") + " · " + L.timeAgo(rec.generated_at)));
+        out.push(b);
+
+        var ns = section("Notizie");
+        if (news.length) {
+          news.slice(0, 5).forEach(function (n) { ns.body.appendChild(newsCard(n, { forId: id })); });
+          if (news.length > 5) ns.body.appendChild(more("Altre " + (news.length - 5) + " notizie", news.slice(5).map(function (n) { return newsCard(n, { forId: id }); })));
+        } else ns.body.appendChild(empty("Nessuna notizia rilevante negli ultimi giorni."));
+        out.push(ns);
+
+        if (events.length) {
+          var es = section("Prossimi eventi");
+          es.body.appendChild(h("ul", { class: "events" }, events.slice(0, 6).map(function (e) { return eventRow(e, { forId: id }); })));
+          out.push(es);
+        }
+
+        var deep = [];
+        if (a.cosa_e_successo && a.cosa_e_successo.length) deep.push(more("Cosa è successo", storyDetails(a, reg)));
+        if (a.perche_mosso) deep.push(more("Perché si è mosso il prezzo", whyDetails(a.perche_mosso, reg)));
+        if (a.prospettive) deep.push(more("Scenari", scenarioDetails(a.prospettive, reg)));
+        if (a.da_monitorare && a.da_monitorare.length) {
+          deep.push(more("Cosa tenere d'occhio", h("ul", { class: "plain" }, a.da_monitorare.map(function (w) {
+            return h("li", null, w.data ? h("strong", null, L.fmtDay(w.data) + " ") : null, w.evento, " ", refsEl(w.fonti, reg), w.perche ? h("div", { class: "small muted" }, w.perche) : null);
+          }))));
+        }
+        if (inst.type === "etf") deep.push(more("Composizione dell'ETF", etfDetails(inst, fund, row.index)));
+        if (q) deep.push(more("Dati di mercato", marketDetails(q)));
+        deep.push(more("Fonti e storico", sourcesDetails(inst, rec, history)));
+        var dc = section("Approfondisci");
+        dc.body.appendChild(h("div", { class: "deep" }, deep));
+        dc.body.appendChild(h("div", { class: "row" },
+          refreshAction({ components: ["analysis"], instrument: id, force: true }, "Rigenera analisi", "ghost small"),
+          h("a", { class: "btn ghost small", href: "#/modifica/" + encodeURIComponent(id) }, "Modifica strumento")));
+        out.push(dc);
         out.push(disclaimer());
         return out;
       });
@@ -731,41 +700,48 @@
 
   // ---------------------------------------------------------------- PAGINA: eventi e notizie
   function pageNews() {
-    return Promise.all([load("news.json"), load("events.json"), load("instruments.json")]).then(function (r) {
-      var nm = r[0] || { items: [] }, ev = r[1] || { items: [] }, insts = (r[2] && r[2].instruments) || [];
-      var names = {};
-      insts.forEach(function (i) { names[i.id] = i.name; });
+    return Promise.all([load("news.json"), load("events.json"), load("overview.json")]).then(function (r) {
+      var nm = r[0] || { items: [] }, ev = r[1] || { items: [] };
+      var names = nameMap(r[2]);
+      var ids = Object.keys(names);
       var current = Prefs.get("newsFilter", "");
       if (current && !names[current]) current = "";
-      var listEl = h("div");
-      var chips = h("div", { class: "chips filter" });
+      var today = new Date().toISOString().slice(0, 10);
+      var evBox = h("div"), listEl = h("div");
+      var chips = h("div", { class: "chips filter", role: "group", "aria-label": "Filtra per strumento" });
       function draw() {
         chips.textContent = "";
-        [["", "Tutti"]].concat(insts.map(function (i) { return [i.id, i.name]; })).forEach(function (c) {
-          chips.appendChild(h("button", { type: "button", class: "chip" + (current === c[0] ? " on" : ""), onclick: function () { current = c[0]; Prefs.set("newsFilter", current); draw(); } }, c[1]));
+        [["", "Tutti"]].concat(ids.map(function (i) { return [i, names[i]]; })).forEach(function (c) {
+          chips.appendChild(h("button", { type: "button", class: "chip" + (current === c[0] ? " on" : ""), "aria-pressed": current === c[0] ? "true" : "false",
+            onclick: function () { current = c[0]; Prefs.set("newsFilter", current); draw(); } }, c[1]));
         });
+        var opts = current ? { forId: current } : { names: names };
+        var upcoming = ev.items.filter(function (e) { return e.date >= today && (!current || eventIds(e).indexOf(current) >= 0); });
+        evBox.textContent = "";
+        if (upcoming.length) {
+          evBox.appendChild(h("ul", { class: "events" }, upcoming.slice(0, 5).map(function (e) { return eventRow(e, opts); })));
+          if (upcoming.length > 5) evBox.appendChild(more("Altri " + (upcoming.length - 5) + " eventi", h("ul", { class: "events" }, upcoming.slice(5).map(function (e) { return eventRow(e, opts); }))));
+        } else evBox.appendChild(empty("Nessun evento in calendario."));
         listEl.textContent = "";
         var items = nm.items.filter(function (n) { return !current || n.instrument_ids.indexOf(current) >= 0; });
-        if (!items.length) listEl.appendChild(empty("Non sono state trovate notizie recenti sufficientemente rilevanti nelle fonti consultate."));
-        items.slice(0, 60).forEach(function (n) { listEl.appendChild(newsCard(Object.assign({}, n, { instrument_names: n.instrument_ids.map(function (i) { return names[i] || i; }) }), { showInstruments: true })); });
+        if (!items.length) listEl.appendChild(empty("Nessuna notizia rilevante negli ultimi giorni."));
+        items.slice(0, 15).forEach(function (n) { listEl.appendChild(newsCard(n, opts)); });
+        if (items.length > 15) listEl.appendChild(more("Altre " + (Math.min(items.length, 60) - 15) + " notizie", items.slice(15, 60).map(function (n) { return newsCard(n, opts); })));
       }
       draw();
-      var today = new Date().toISOString().slice(0, 10);
-      var es = section("Calendario eventi");
-      var upcoming = ev.items.filter(function (e) { return e.date >= today; }).map(function (e) { return Object.assign({}, e, { instrument_name: names[e.instrument_id] || "Generale" }); });
-      es.body.appendChild(upcoming.length ? h("ul", { class: "events" }, upcoming.map(eventRow)) : empty("Nessun evento futuro verificato nelle fonti consultate."));
-      (ev.notes || []).forEach(function (n) { es.body.appendChild(h("p", { class: "tiny muted" }, n)); });
-      var ns = section("Notizie", "Raccolte il " + L.fmtDate(nm.updated_at) + " · finestra " + (nm.window_days || 7) + " giorni · deduplicate per link e titolo.");
-      ns.body.appendChild(chips);
+      var es = section("Calendario");
+      es.body.appendChild(evBox);
+      var ns = section("Notizie");
       ns.body.appendChild(listEl);
-      (nm.notes || []).forEach(function (n) { ns.body.appendChild(h("p", { class: "tiny muted" }, n)); });
-      return [h("header", { class: "page-head" }, h("div", null, h("h1", null, "Eventi e notizie")), refreshAction({ components: ["news", "events"] }, "Aggiorna notizie")), es, ns];
+      return [h("header", { class: "page-head" }, h("h1", null, "Eventi e notizie"), refreshAction({ components: ["news", "events"] }, "Aggiorna", "ghost")),
+        chips, es, ns,
+        h("p", { class: "tiny muted" }, "Notizie raccolte " + L.timeAgo(nm.updated_at) + " da Google News e dai comunicati di BCE e Fed. I link portano all'articolo originale.")];
     });
   }
 
   // ---------------------------------------------------------------- PAGINA 4: impostazioni
   function aiUsageSection() {
-    var sec = section("Consumo AI cloud", "Chiamate al modello e token consumati negli ultimi giorni (fuso del Pacifico, come i limiti gratuiti di Gemini).");
+    var sec = { body: h("div") };
     load("ai_usage.json").catch(function () { return null; }).then(function (u) {
       var days = (u && u.days) || {};
       var keys = Object.keys(days).sort().reverse().slice(0, 7);
@@ -779,33 +755,34 @@
             h("td", null, (d.total_tokens || 0).toLocaleString("it-IT")), h("td", null, models || "—"));
         })));
     });
-    return sec;
+    return sec.body;
   }
 
   function pageSettings() {
     return load("status.json").catch(function () { return null; }).then(function (status) {
-      var out = [h("header", { class: "page-head" }, h("div", null, h("h1", null, "Impostazioni e fonti")))];
-      var modeTxt = { local: "Server locale attivo: le azioni vengono eseguite su questo computer.", github: "Modalità remota: i dati sono letti da GitHub e le azioni avviano i workflow GitHub Actions (funziona anche a PC spento).", static: "Sola lettura: nessun server locale e nessun collegamento GitHub configurato." }[Backend.mode];
-      var ms = section("Modalità di funzionamento");
-      ms.body.appendChild(h("p", null, modeTxt));
-      if (Backend.health) ms.body.appendChild(h("p", { class: "small muted" }, "AI locale: " + (Backend.health.ai_provider === "none" ? "nessun modello disponibile (sintesi senza AI)" : Backend.health.ai_provider + " " + (Backend.health.ai_model || "")) + " · prezzi: " + Backend.health.price_provider));
-      out.push(ms);
+      var out = [h("header", { class: "page-head" }, h("h1", null, "Impostazioni"))];
+      var modeTxt = { local: "Server locale attivo: le azioni vengono eseguite su questo computer.", github: "Collegata a GitHub: i dati arrivano dal repository e gli aggiornamenti girano su GitHub Actions, anche a PC spento.", static: "Sola lettura: nessun server locale e nessun collegamento GitHub configurato." }[Backend.mode];
+      out.push(h("p", { class: "small" }, modeTxt));
 
-      var st = section("Stato degli aggiornamenti");
       var comps = (status && status.components) || {};
       var NAMES = { prices: "Prezzi", events: "Eventi", funds: "Dati ETF", news: "Notizie", analysis: "Analisi" };
-      st.body.appendChild(h("table", { class: "kv small" }, Object.keys(NAMES).map(function (k) {
+      var stTable = h("table", { class: "kv small" }, Object.keys(NAMES).map(function (k) {
         var c = comps[k];
         return h("tr", null, h("th", null, NAMES[k]),
           h("td", null, c ? badge(c.status, "st-" + c.status) : "—"),
           h("td", null, c ? (c.message || "") + " · ultimo successo " + (c.last_success ? L.fmtDate(c.last_success) : "mai") : "mai eseguito",
             c && c.errors && c.errors.length ? h("details", null, h("summary", null, c.errors.length + " errori"), h("ul", { class: "plain tiny" }, c.errors.map(function (e) { return h("li", null, (e.symbol || e.id || "") + ": " + e.error); }))) : null));
-      })));
-      out.push(st);
-      out.push(aiUsageSection());
+      }));
+      var advanced = [more("Stato degli aggiornamenti", stTable), more("Consumo AI", aiUsageSection())];
+      if (Backend.health) advanced.unshift(more("Server locale", h("p", { class: "small" }, "AI: " + (Backend.health.ai_provider === "none" ? "nessun modello disponibile (sintesi senza AI)" : Backend.health.ai_provider + " " + (Backend.health.ai_model || "")) + " · prezzi: " + Backend.health.price_provider)));
+      advanced.push(more("Fonti e limiti", h("ul", { class: "plain small" },
+        h("li", null, "Prezzi: Yahoo Finance tramite la libreria non ufficiale yfinance. Dati ritardati, mai tempo reale; possibili buchi o errori."),
+        h("li", null, "Notizie: Google News (per le azioni il nome della società; per gli ETF l'indice, il mercato e le principali partecipazioni) e i comunicati di BCE e Fed. Nessuno scraping, nessun aggiramento di paywall."),
+        h("li", null, "Eventi: date dei risultati indicate dal provider (non verificate) e riunioni delle banche centrali da config/manual_events.json."),
+        h("li", null, "Analisi: modello AI locale (Ollama) o API cloud configurata. L'output dell'AI non è una fonte: ogni affermazione rimanda alle fonti raccolte."))));
 
       var g = gh();
-      var gs = section("Collegamento GitHub (uso da telefono a PC spento)", "Il token resta solo in questo browser. Crea un token «fine-grained» limitato a questo repository con permessi Contents: read e Actions: read and write. Non usare mai la password di GitHub.");
+      var gs = section("Collegamento GitHub", "Il token resta solo in questo browser. Serve un token «fine-grained» limitato al repository dei dati, con permessi Contents: read e Actions: read and write.");
       var repo = h("input", { class: "input", value: g.repo, placeholder: "utente/repository" });
       var branch = h("input", { class: "input", value: g.branch || "main" });
       var token = h("input", { class: "input", type: "password", value: g.token, placeholder: "github_pat_…", autocomplete: "off" });
@@ -832,22 +809,16 @@
       out.push(gs);
 
       out.push(csvSection());
-
-      var info = section("Fonti e limiti");
-      info.body.appendChild(h("ul", { class: "plain small" },
-        h("li", null, "Prezzi: Yahoo Finance tramite la libreria non ufficiale yfinance. Dati ritardati, mai tempo reale; possibili buchi o errori."),
-        h("li", null, "Notizie: feed RSS di Google News (per strumento) e feed configurati in config/sources.json. Nessuno scraping, nessun aggiramento di paywall."),
-        h("li", null, "Eventi: date indicate dal provider (non verificate su fonti ufficiali) ed eventi inseriti a mano con fonte."),
-        h("li", null, "Analisi: modello AI locale (Ollama) o API cloud configurata (es. Google Gemini, livello gratuito). L'output dell'AI non è una fonte: ogni affermazione rimanda alle fonti raccolte."),
-        h("li", null, "Aggiornamenti automatici: in cloud tramite GitHub Actions (anche a PC spento); in locale solo mentre il programma è in esecuzione.")));
-      out.push(info);
+      var adv = section("Avanzate");
+      adv.body.appendChild(h("div", { class: "deep" }, advanced));
+      out.push(adv);
       out.push(disclaimer());
       return out;
     });
   }
 
   function csvSection() {
-    var s = section("Importa da CSV", "Anteprima e conferma prima del salvataggio. Vengono lette solo le colonne che mappi; quantità e importi sono ignorati e non salvati. Il simbolo deve essere quello di Yahoo Finance (es. VWCE.DE).");
+    var s = section("Importa da CSV", "Si leggono solo le colonne che scegli; quantità e importi non vengono mai salvati.");
     var file = h("input", { type: "file", accept: ".csv,text/csv", class: "input" });
     var mapBox = h("div");
     var prev = h("div");
@@ -897,7 +868,7 @@
   }
 
   function disclaimer() {
-    return h("p", { class: "disclaimer" }, "Strumento informativo personale. Non è consulenza finanziaria né una raccomandazione di acquisto o vendita. Prezzi ritardati e fonti gratuite possono contenere errori: verifica sempre sulle fonti originali.");
+    return h("p", { class: "disclaimer" }, "Uso personale, non è consulenza finanziaria. Prezzi ritardati e fonti gratuite possono contenere errori.");
   }
 
   function pageConnect() {
