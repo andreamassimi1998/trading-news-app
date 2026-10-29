@@ -764,6 +764,24 @@
   }
 
   // ---------------------------------------------------------------- PAGINA 4: impostazioni
+  function aiUsageSection() {
+    var sec = section("Consumo AI cloud", "Chiamate al modello e token consumati negli ultimi giorni (fuso del Pacifico, come i limiti gratuiti di Gemini).");
+    load("ai_usage.json").catch(function () { return null; }).then(function (u) {
+      var days = (u && u.days) || {};
+      var keys = Object.keys(days).sort().reverse().slice(0, 7);
+      if (!keys.length) { sec.body.appendChild(h("p", { class: "small muted" }, "Nessuna chiamata registrata finora.")); return; }
+      sec.body.appendChild(h("table", { class: "kv small" },
+        h("tr", null, h("th", null, "Giorno"), h("th", null, "Chiamate"), h("th", null, "Token"), h("th", null, "Modelli")),
+        keys.map(function (k) {
+          var d = days[k] || {};
+          var models = Object.keys(d.by_model || {}).map(function (m) { return m + " ×" + d.by_model[m]; }).join(", ");
+          return h("tr", null, h("td", null, k), h("td", null, String(d.calls || 0) + (d.failed ? " (" + d.failed + " fallite)" : "")),
+            h("td", null, (d.total_tokens || 0).toLocaleString("it-IT")), h("td", null, models || "—"));
+        })));
+    });
+    return sec;
+  }
+
   function pageSettings() {
     return load("status.json").catch(function () { return null; }).then(function (status) {
       var out = [h("header", { class: "page-head" }, h("div", null, h("h1", null, "Impostazioni e fonti")))];
@@ -784,6 +802,7 @@
             c && c.errors && c.errors.length ? h("details", null, h("summary", null, c.errors.length + " errori"), h("ul", { class: "plain tiny" }, c.errors.map(function (e) { return h("li", null, (e.symbol || e.id || "") + ": " + e.error); }))) : null));
       })));
       out.push(st);
+      out.push(aiUsageSection());
 
       var g = gh();
       var gs = section("Collegamento GitHub (uso da telefono a PC spento)", "Il token resta solo in questo browser. Crea un token «fine-grained» limitato a questo repository con permessi Contents: read e Actions: read and write. Non usare mai la password di GitHub.");
