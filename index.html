@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://api.github.com; img-src 'self' data:; style-src 'self'; script-src 'self'; base-uri 'none'; form-action 'none'">
+<!-- Repository dati predefinito (impostato da scripts/publish_app.sh per il sito pubblico). -->
+<meta name="pii-repo" content="andreamassimi1998/trading-news">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#0f1216" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f6f7f9" media="(prefers-color-scheme: light)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Investimenti">
+<title>Personal Investment Intelligence</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<a class="skip" href="#app">Vai al contenuto</a>
+<main id="app" class="wrap" aria-live="polite"><p class="muted center">Caricamento…</p></main>
+<div id="toast" class="toast" role="status"></div>
+<nav class="tabbar" aria-label="Navigazione principale">
+  <a href="#/" data-tab="overview"><span class="ico" aria-hidden="true">◎</span>Panoramica</a>
+  <a href="#/strumenti" data-tab="list"><span class="ico" aria-hidden="true">≡</span>Strumenti</a>
+  <a href="#/notizie" data-tab="news"><span class="ico" aria-hidden="true">◷</span>Eventi e notizie</a>
+  <a href="#/impostazioni" data-tab="settings"><span class="ico" aria-hidden="true">⚙</span>Impostazioni</a>
+</nav>
+<script src="lib.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
