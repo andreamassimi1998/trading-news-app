@@ -881,6 +881,15 @@
     return h("p", { class: "disclaimer" }, "Strumento informativo personale. Non è consulenza finanziaria né una raccomandazione di acquisto o vendita. Prezzi ritardati e fonti gratuite possono contenere errori: verifica sempre sulle fonti originali.");
   }
 
+  function pageConnect() {
+    var s = section("Collega i tuoi dati", "Questa pagina contiene solo il codice della dashboard: i dati sono nel repository privato " + DEFAULT_REPO + ".");
+    s.body.appendChild(h("ol", { class: "plain" },
+      h("li", null, "Su GitHub crea un token «fine-grained» limitato a quel repository, con permessi Contents: Read e Actions: Read and write."),
+      h("li", null, "Inseriscilo in ", h("a", { href: "#/impostazioni" }, "Impostazioni → Collegamento GitHub"), ". Resta salvato solo in questo browser.")));
+    s.body.appendChild(h("a", { class: "btn primary", href: "#/impostazioni" }, "Vai alle impostazioni"));
+    return [h("header", { class: "page-head" }, h("div", null, h("h1", null, "Benvenuto"))), s, disclaimer()];
+  }
+
   // ---------------------------------------------------------------- router
   var ROUTES = [
     [/^#?\/?$/, pageOverview, "overview"],
@@ -897,6 +906,7 @@
     ROUTES.some(function (r) { var m = hash.match(r[0]); if (m) { match = m; fn = r[1]; tab = r[2]; return true; } return false; });
     document.querySelectorAll(".tabbar a").forEach(function (a) { a.classList.toggle("on", a.getAttribute("data-tab") === tab); });
     app.setAttribute("aria-busy", "true");
+    if (Backend.mode === "static" && DEFAULT_REPO && tab !== "settings") fn = pageConnect; // sito pubblico senza token
     Promise.resolve(fn(match && match[1] ? decodeURIComponent(match[1]) : undefined)).then(function (nodes) {
       app.textContent = "";
       append(app, nodes);
