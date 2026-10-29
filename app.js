@@ -209,8 +209,11 @@
       if (who.length) bits.unshift(who[0] + (who.length > 1 ? " +" + (who.length - 1) : ""));
     }
     var viaTxt = opts.forId ? via[opts.forId] : null;
+    var meaning = n.meaning || {};
+    var mean = opts.forId ? meaning[opts.forId] : meaning[Object.keys(meaning)[0]];
     return h("article", { class: "news" },
-      h("h3", null, link(n.url, n.title)),
+      h("h3", null, link(n.url, n.title_it || n.title)),
+      mean ? h("p", { class: "meaning" }, mean) : null,
       h("div", { class: "meta" }, bits.filter(Boolean).join(" · ")),
       viaTxt ? h("div", { class: "via" }, "Riguarda " + viaTxt) : null);
   }
@@ -253,7 +256,7 @@
       h("div", { class: "inst-main" },
         h("div", { class: "inst-name" }, r.short || r.name, r.demo ? badge("DEMO", "demo") : null),
         h("div", { class: "tiny muted" }, (r.type === "etf" ? "ETF" : "Azione"),
-          r.outlook && r.outlook !== "non_valutabile" ? h("span", { class: "outlook-word " + (OUTLOOK[r.outlook] || "") }, " · " + r.outlook_label.replace(/^Prospettive /, "prospettive ")) : null)),
+          r.outlook && r.outlook !== "non_valutabile" ? h("span", { class: "outlook-word " + (OUTLOOK[r.outlook] || "") }, " · " + r.outlook_label.replace(/^(Prospettive|Tendenza) /, function (m) { return m.toLowerCase(); }) + (r.outlook_conf ? " (fiducia " + r.outlook_conf + ")" : "")) : null)),
       h("div", { class: "inst-px" },
         r.price == null ? h("div", { class: "tiny muted" }, "prezzo n.d.") : pctEl(r.daily && r.daily.pct),
         h("div", { class: "tiny muted" }, r.m1 ? "1 mese " + L.fmtPct(r.m1.pct) : "")));
@@ -464,9 +467,15 @@
     if (!rec || (!p.spiegazione && !hasScen)) {
       s.body.appendChild(empty(rec ? "Informazioni insufficienti per una previsione ragionata." : "Previsione non ancora disponibile."));
     } else {
+      var ARROW = { rialzo: "↑ ", laterale: "→ ", ribasso: "↓ " };
       s.body.appendChild(h("div", { class: "outlook-head " + (OUTLOOK[p.valutazione] || "") },
-        h("strong", null, p.valutazione_label || "Prospettive non valutabili"), p.orizzonte ? h("span", { class: "tiny muted" }, " · " + p.orizzonte) : null));
+        h("strong", null, (ARROW[p.direzione] || "") + (p.valutazione_label || "Prospettive non valutabili")),
+        h("div", { class: "tiny muted" }, [p.fiducia ? "fiducia " + p.fiducia : null, p.orizzonte].filter(Boolean).join(" · "))));
       if (p.spiegazione) clampText(p.spiegazione, "small").forEach(function (n) { s.body.appendChild(n); });
+      if (p.fattori_chiave && p.fattori_chiave.length) {
+        s.body.appendChild(h("div", { class: "keys" }, h("div", { class: "tiny muted" }, "Dipende soprattutto da"),
+          p.fattori_chiave.map(function (f) { return h("div", { class: "small" }, "• " + f.testo); })));
+      }
       var LBL = { rialzista: "Se va meglio", centrale: "Più probabile", ribassista: "Se va peggio" };
       var rows = ["centrale", "rialzista", "ribassista"].filter(function (k) { return sc[k] && sc[k].descrizione; });
       if (rows.length) {

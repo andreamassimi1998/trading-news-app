@@ -198,3 +198,6 @@ ul.plain li { margin: 4px 0; }
 .card.inst-list .inst:first-child { padding-top: 10px; }
 .chart { margin: 0 0 10px; }
 .chart .seg { margin: 6px 0 0; }
+.meaning { font-size: .88rem; color: var(--muted); margin: 2px 0 3px; }
+.keys { margin: 10px 0 0; }
+.keys .small { margin-top: 2px; }
