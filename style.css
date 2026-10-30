@@ -99,14 +99,14 @@ p { margin: 6px 0; }
 
 /* lista dei titoli */
 .card.inst-list { padding: 4px 16px; }
-.inst { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 12px; padding: 13px 0; color: var(--text); border-top: 1px solid var(--line); }
+.inst { display: grid; grid-template-columns: minmax(min-content, 1fr) minmax(24px, 72px) auto; align-items: center; gap: 10px; padding: 13px 0; color: var(--text); border-top: 1px solid var(--line); }
 .inst:first-child { border-top: 0; }
 .inst:hover { text-decoration: none; }
 .inst:hover .inst-name { color: var(--accent); }
 .inst-name { font-weight: 650; line-height: 1.25; }
-.inst-sub { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 4px; }
+.inst-sub { display: flex; flex-wrap: nowrap; align-items: center; gap: 6px; margin-top: 4px; }
 .kind { font-size: .72rem; color: var(--muted); font-weight: 600; }
-.inst-px { text-align: right; min-width: 84px; }
+.inst-px { text-align: right; min-width: 84px; white-space: nowrap; }
 .inst-px .tiny { margin-top: 3px; }
 .fc-chip { font-size: .72rem; font-weight: 650; padding: 1px 8px; border-radius: 999px; background: var(--flat-soft); color: var(--flat); }
 .fc-chip.up { background: var(--up-soft); color: var(--up); }
@@ -115,7 +115,7 @@ p { margin: 6px 0; }
 .meter.mini { gap: 2px; }
 .meter.mini i { width: 6px; height: 6px; border-radius: 2px; background: currentColor; opacity: .25; }
 .meter.mini i.on { opacity: 1; }
-.spark-mini { display: block; width: 72px; height: 30px; }
+.spark-mini { display: block; width: 100%; max-width: 72px; height: 30px; }  /* si stringe sugli schermi piccoli */
 .spark-mini polyline { fill: none; stroke: var(--flat); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
 .spark-mini circle { fill: var(--flat); }
 .spark-mini.up polyline { stroke: var(--up); } .spark-mini.up circle { fill: var(--up); }
@@ -236,3 +236,4 @@ ul.plain li { margin: 4px 0; }
   .toast { bottom: 24px; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+@media (max-width: 340px) { .inst { grid-template-columns: 1fr auto; } .inst .spark-mini { display: none; } .inst-sub { flex-wrap: wrap; } }  /* telefoni molto stretti: niente grafico */
