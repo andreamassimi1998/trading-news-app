@@ -149,6 +149,8 @@ p { margin: 6px 0; }
   background: var(--accent-soft); color: var(--accent); font-size: .75rem; font-weight: 700; display: grid; place-items: center; }
 .brief li:first-child::before { top: 2px; }
 .brief p { margin: 0 0 6px; line-height: 1.5; }
+.market .tema { display: inline-block; font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--accent); margin-bottom: 2px; }
+.market .m-title { font-weight: 700; margin-bottom: 2px; }
 .srcs { display: flex; flex-wrap: wrap; gap: 4px; }
 .src { font-size: .72rem; color: var(--muted); background: var(--soft); border-radius: 6px; padding: 1px 7px; }
 .src.single { background: var(--warn-bg); color: var(--text-2); }

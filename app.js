@@ -596,8 +596,22 @@
     if (d === y.toLocaleDateString("en-CA", { timeZone: "Europe/Rome" })) return "Ieri";
     return L.fmtDay(d);
   }
+  // le 2-4 notizie del giorno che pesano di più sui mercati mondiali (scritte da Gemini, data/market_brief.json)
+  function marketCard(brief) {
+    var items = (brief && brief.items) || [];
+    if (!items.length) return null;
+    var s = section("Oggi sui mercati");
+    s.classList.add("market");
+    s.body.appendChild(h("ol", { class: "brief" }, items.map(function (it) {
+      return h("li", null, h("span", { class: "tema" }, it.tema), h("p", { class: "m-title" }, it.titolo), h("p", null, it.testo),
+        h("div", { class: "srcs" }, (it.fonti || []).map(function (f) { return h("span", { class: "src" }, f); })));
+    })));
+    s.body.appendChild(h("p", { class: "tiny muted" }, "Aggiornato " + L.timeAgo(brief.generated_at)));
+    return s;
+  }
+
   function pageNews() {
-    return Promise.all([load("news.json"), load("overview.json")]).then(function (r) {
+    return Promise.all([load("news.json"), load("overview.json"), load("market_brief.json").catch(function () { return null; })]).then(function (r) {
       var nm = r[0] || { items: [] };
       var names = nameMap(r[1]);
       var ids = Object.keys(names);
@@ -630,7 +644,7 @@
       }
       draw();
       return [h("header", { class: "page-head" }, h("div", null, h("p", { class: "eyebrow" }, "Ultimi 14 giorni"), h("h1", null, "Notizie")),
-        refreshAction({ components: ["news"] }, "↻ Aggiorna", "ghost small")), chips, listEl];
+        refreshAction({ components: ["news"] }, "↻ Aggiorna", "ghost small")), marketCard(r[2]), chips, listEl];
     });
   }
 
