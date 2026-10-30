@@ -64,7 +64,8 @@
     var t = /^\d{4}-\d{2}-\d{2}$/.test(iso) ? new Date(iso + "T12:00:00Z") : new Date(iso);
     if (isNaN(t)) return "data non disponibile";
     var s = ((now || new Date()) - t) / 1000;
-    if (s < 0) return fmtDate(iso);
+    if (s < -120) return fmtDate(iso);  // qualche secondo di differenza tra gli orologi non conta
+    if (s < 60) return "adesso";
     if (s < 3600) return Math.max(1, Math.round(s / 60)) + " min fa";
     if (s < 86400) return Math.round(s / 3600) + " h fa";
     if (s < 86400 * 7) { var g = Math.round(s / 86400); return g + (g === 1 ? " giorno fa" : " giorni fa"); }

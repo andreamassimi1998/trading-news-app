@@ -171,6 +171,63 @@
   }
   function clearCache() { cache = {}; }
 
+  // Prezzi in diretta dal servizio su Cloudflare (LS Exchange, come Trade Republic): sostituiscono prezzo e variazione
+  // di oggi dei dati di GitHub. Se il servizio non risponde in pochi secondi restano i dati di GitHub.
+  var WORKER = ((document.querySelector('meta[name="pii-worker"]') || {}).content || "").replace(/\/$/, "");
+  var live = { at: 0, key: "", data: null };
+  function livePrices(isins, fresh) {
+    isins = isins.filter(Boolean);
+    var key = isins.join(",");
+    if (!WORKER || !isins.length) return Promise.resolve(null);
+    if (!fresh && live.data && live.key === key && Date.now() - live.at < 60000) return Promise.resolve(live.data);
+    var ctrl = window.AbortController ? new AbortController() : null;
+    var guard = setTimeout(function () { if (ctrl) ctrl.abort(); }, 4000);
+    return fetch(WORKER + "/prices?isin=" + encodeURIComponent(key), { cache: "no-store", signal: ctrl ? ctrl.signal : undefined })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) {
+        clearTimeout(guard);
+        if (!j || !j.prices) return null;
+        var by = {};
+        j.prices.forEach(function (p) { if (p.price != null) by[p.isin] = p; });
+        live = { at: Date.now(), key: key, data: { fetched_at: j.fetched_at, by: by } };
+        return live.data;
+      }).catch(function () { clearTimeout(guard); return null; });
+  }
+  function romeDay(iso) { return new Date(iso).toLocaleDateString("en-CA", { timeZone: "Europe/Rome" }); }
+  /** Riga della panoramica con prezzo e variazione in diretta (copia: i dati in cache restano quelli di GitHub). */
+  function liveRow(r, lp) {
+    var p = lp && r.isin && lp.by[r.isin];
+    if (!p) return r;
+    var out = Object.assign({}, r, { price: p.price, currency: p.currency, stale: false });
+    if (p.daily_pct != null) out.daily = Object.assign({}, r.daily, { pct: p.daily_pct });
+    if (r.spark && r.spark.length) out.spark = r.spark.slice(0, -1).concat([p.price]);
+    return out;
+  }
+  /** Scheda del titolo con il prezzo in diretta: aggiorna prezzo, variazione di oggi, ora e ultimo punto del grafico. */
+  function liveQuote(q, isin, lp) {
+    var p = q && lp && isin && lp.by[isin];
+    if (!p) return q;
+    var day = romeDay(p.time), bars = (q.bars || []).slice();
+    if (bars.length && bars[bars.length - 1].date === day) bars[bars.length - 1] = { date: day, close: p.price };
+    else bars.push({ date: day, close: p.price });
+    var metrics = Object.assign({}, q.metrics);
+    if (p.daily_pct != null) metrics.daily = Object.assign({}, metrics.daily, { pct: p.daily_pct });
+    return Object.assign({}, q, { price: p.price, currency: p.currency, bars: bars, metrics: metrics, stale: false, as_of: p.time,
+      exchange: "LSX", original_currency: null, last_bar_date: day,
+      session: { price_kind: day === romeDay(new Date().toISOString()) ? "intraday" : "close" } });
+  }
+  /** «Aggiorna» dei prezzi: con il servizio in diretta bastano pochi secondi, altrimenti si aggiorna su GitHub. */
+  function pricesAction(fallbackOpts) {
+    if (!WORKER) return refreshAction(fallbackOpts, "↻ Aggiorna", "ghost small");
+    var b = h("button", { class: "btn ghost small", type: "button" }, "↻ Aggiorna");
+    b.addEventListener("click", function () {
+      b.disabled = true;
+      live.at = 0;
+      route();
+    });
+    return b;
+  }
+
   // ---------------------------------------------------------------- componenti comuni
   var NS = "http://www.w3.org/2000/svg";
   function svgEl(tag, attrs) {
@@ -285,14 +342,17 @@
   // ---------------------------------------------------------------- PAGINA 1: i miei titoli
   function pageHome() {
     return Promise.all([load("overview.json"), load("status.json")]).then(function (r) {
-      var ov = r[0], st = r[1] || {};
-      var rows = (ov && ov.instruments) || [];
+      var rows0 = (r[0] && r[0].instruments) || [];
+      return livePrices(rows0.map(function (x) { return x.isin; })).then(function (lp) { return [r[0], r[1], lp]; });
+    }).then(function (r) {
+      var ov = r[0], st = r[1] || {}, lp = r[2];
+      var rows = ((ov && ov.instruments) || []).map(function (x) { return liveRow(x, lp); });
       var up = rows.filter(function (x) { return x.daily && x.daily.pct > 0; }).length;
       var down = rows.filter(function (x) { return x.daily && x.daily.pct < 0; }).length;
       var out = [h("header", { class: "page-head home" },
-        h("p", { class: "eyebrow wide" }, today() + " · ", h("span", { class: "nowrap" }, "aggiornati " + L.timeAgo(st.last_refresh_at || (ov && ov.generated_at)))),
+        h("p", { class: "eyebrow wide" }, today() + " · ", h("span", { class: "nowrap" }, "aggiornati " + L.timeAgo((lp && lp.fetched_at) || st.last_refresh_at || (ov && ov.generated_at)))),
         h("div", null, h("h1", null, "I miei titoli"), rows.length ? h("p", { class: "sub" }, up + " in rialzo e " + down + " in calo oggi") : null),
-        refreshAction({}, "↻ Aggiorna", "ghost small"))];
+        pricesAction({}))];
       if (ov && ov.demo) out.push(demoBanner());
       out.push(rows.length ? h("div", { class: "card inst-list" }, rows.map(instRow)) : empty("Non segui ancora nessun titolo."));
       out.push(h("a", { class: "btn ghost add", href: "#/aggiungi" }, "+ Aggiungi un titolo"));
@@ -576,8 +636,11 @@
     return Promise.all([load("overview.json"), load("quotes/" + id + ".json"), load(base + "latest.json"), load("news.json"),
       load("events.json")]).then(function (r) {
       var inst = (((r[0] || {}).instruments) || []).filter(function (x) { return x.id === id; })[0];
+      return livePrices(inst ? [inst.isin] : []).then(function (lp) { return r.concat([inst, lp]); });
+    }).then(function (r) {
+      var inst = r[5];
       if (!inst) return [empty("Titolo non trovato."), h("a", { href: "#/" }, "← I miei titoli")];
-      var q = r[1], rec = r[2], newsMeta = r[3] || {}, evs = (r[4] && r[4].items) || [];
+      var q = liveQuote(r[1], inst.isin, r[6]), rec = r[2], newsMeta = r[3] || {}, evs = (r[4] && r[4].items) || [];
       var news = (newsMeta.items || []).filter(function (n) { return newsIds(n).indexOf(id) >= 0; }).sort(byDate);
       var todayIso = new Date().toISOString().slice(0, 10);
       var events = evs.filter(function (e) { return eventIds(e).indexOf(id) >= 0 && e.date >= todayIso; });
@@ -585,7 +648,7 @@
       var out = [h("p", { class: "crumbs" }, h("a", { href: "#/" }, "← I miei titoli")),
         h("header", { class: "page-head" },
           h("div", null, h("p", { class: "eyebrow" }, (inst.type === "etf" ? "ETF" : "Azione") + " · " + inst.symbol), h("h1", null, inst.short || inst.name)),
-          refreshAction({ components: ["prices", "funds", "events", "news", "analysis"], instrument: id }, "↻ Aggiorna", "ghost small"))];
+          pricesAction({ components: ["prices", "funds", "events", "news", "analysis"], instrument: id }))];
       out.push(trendCard(q, a));
       out.push(briefCard(rec));
       out.push(forecastCard(rec, events));
