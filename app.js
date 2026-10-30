@@ -469,7 +469,7 @@
     return out;
   }
 
-  var EXCHANGES = { GER: "Xetra", FRA: "Francoforte", MIL: "Milano", AMS: "Amsterdam", LSE: "Londra", PAR: "Parigi",
+  var EXCHANGES = { LSX: "LS Exchange", GER: "Xetra", FRA: "Francoforte", MIL: "Milano", AMS: "Amsterdam", LSE: "Londra", PAR: "Parigi",
     NMS: "Nasdaq", NGM: "Nasdaq", NCM: "Nasdaq", NYQ: "New York", PCX: "New York" };
   /** "Prezzo delle 15:42 · Xetra · ritardo ~15 min" oppure "Chiusura del 29 ott · Xetra", con l'eventuale conversione. */
   function priceWhen(q) {
