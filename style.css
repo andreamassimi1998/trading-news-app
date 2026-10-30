@@ -44,6 +44,9 @@ p { margin: 6px 0; }
 /* intestazioni di pagina */
 .page-head { display: flex; gap: 12px; justify-content: space-between; align-items: flex-end; margin: 6px 0 16px; }
 .eyebrow { margin: 0 0 2px; font-size: .8rem; color: var(--muted); font-weight: 600; }
+.page-head.home { flex-wrap: wrap; row-gap: 0; }
+.eyebrow.wide { flex-basis: 100%; }
+.nowrap { white-space: nowrap; }
 .sub { margin: 4px 0 0; font-size: .85rem; color: var(--muted); }
 .crumbs { margin: 0 0 8px; font-size: .9rem; }
 

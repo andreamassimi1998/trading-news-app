@@ -276,9 +276,9 @@
       var rows = (ov && ov.instruments) || [];
       var up = rows.filter(function (x) { return x.daily && x.daily.pct > 0; }).length;
       var down = rows.filter(function (x) { return x.daily && x.daily.pct < 0; }).length;
-      var out = [h("header", { class: "page-head" },
-        h("div", null, h("p", { class: "eyebrow" }, today() + " · aggiornati " + L.timeAgo(st.last_refresh_at || (ov && ov.generated_at))),
-          h("h1", null, "I miei titoli"), rows.length ? h("p", { class: "sub" }, up + " in rialzo e " + down + " in calo oggi") : null),
+      var out = [h("header", { class: "page-head home" },
+        h("p", { class: "eyebrow wide" }, today() + " · ", h("span", { class: "nowrap" }, "aggiornati " + L.timeAgo(st.last_refresh_at || (ov && ov.generated_at)))),
+        h("div", null, h("h1", null, "I miei titoli"), rows.length ? h("p", { class: "sub" }, up + " in rialzo e " + down + " in calo oggi") : null),
         refreshAction({}, "↻ Aggiorna", "ghost small"))];
       if (ov && ov.demo) out.push(demoBanner());
       out.push(rows.length ? h("div", { class: "card inst-list" }, rows.map(instRow)) : empty("Non segui ancora nessun titolo."));
