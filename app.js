@@ -475,7 +475,8 @@
   function priceWhen(q) {
     var intraday = q.session && q.session.price_kind === "intraday";
     var parts = [q.stale ? "Ultimo prezzo del " + L.fmtDate(q.last_bar_date) + " (non aggiornato)"
-      : intraday && /T/.test(q.as_of || "") ? "Prezzo delle " + L.fmtTime(q.as_of) : "Chiusura del " + L.fmtDay(q.last_bar_date)];
+      : intraday ? "Prezzo delle " + L.fmtTime(/T/.test(q.as_of || "") ? q.as_of : q.fetched_at)  // senza l'ora di borsa: quella di lettura
+        : "Chiusura del " + L.fmtDay(q.last_bar_date)];
     if (q.exchange) parts.push(EXCHANGES[q.exchange] || q.exchange);
     if (intraday && !q.stale) parts.push("ritardo ~15 min");
     if (q.original_currency) parts.push("convertito da " + q.original_currency + " al cambio del giorno");
