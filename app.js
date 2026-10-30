@@ -765,4 +765,17 @@
   }
   window.addEventListener("hashchange", function () { route(); window.scrollTo(0, 0); });
   Backend.init().then(route);
+
+  // Il telefono può tenere in cache la pagina per alcuni minuti (anche giorni, se aggiunta alla Home): all'apertura
+  // si controlla se è stata pubblicata una versione nuova e, in quel caso, la si carica con un indirizzo diverso.
+  function checkUpdate() {
+    var mine = ((document.querySelector('script[src*="app.js"]') || {}).src || "").split("v=")[1];
+    if (!mine) return; // anteprima locale, senza versione
+    fetch("index.html?check=" + Date.now(), { cache: "no-store" }).then(function (r) { return r.ok ? r.text() : ""; }).then(function (t) {
+      var m = /app\.js\?v=([a-z0-9]+)/.exec(t);
+      if (m && m[1] !== mine && location.search.indexOf("v=" + m[1]) < 0) location.replace(location.pathname + "?v=" + m[1] + location.hash);
+    }).catch(function () {});
+  }
+  checkUpdate();
+  document.addEventListener("visibilitychange", function () { if (!document.hidden) checkUpdate(); });
 })();
