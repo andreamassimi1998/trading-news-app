@@ -725,6 +725,29 @@
   }
 
   // ---------------------------------------------------------------- PAGINA 4: impostazioni
+  // Quante previsioni si sono rivelate giuste dopo 2 settimane (data/track_record.json, calcolato senza AI)
+  function trackSection() {
+    var body = h("div");
+    Promise.all([load("track_record.json").catch(function () { return null; }), load("overview.json").catch(function () { return null; })]).then(function (r) {
+      var s = r[0] && r[0].summary, names = nameMap(r[1]);
+      if (!s) { body.appendChild(h("p", { class: "small muted" }, "Nessuna previsione registrata finora.")); return; }
+      function pct(x) { return x.totale ? x.giuste + " su " + x.totale + " (" + Math.round(x.giuste / x.totale * 100) + "%)" : "—"; }
+      body.appendChild(h("p", { class: "small" }, s.all.totale
+        ? "Giuste " + pct(s.all) + ", verificate dopo " + s.horizon_days + " giorni. In attesa di verifica: " + s.pending + "."
+        : "Ancora nessuna previsione verificata: la prima verifica arriva " + s.horizon_days + " giorni dopo la previsione. In attesa: " + s.pending + "."));
+      if (!s.all.totale) return;
+      body.appendChild(h("p", { class: "tiny muted" }, "Per sicurezza della previsione"));
+      body.appendChild(h("table", { class: "kv small" }, [["alta", "Più sicura"], ["media", "Abbastanza sicura"], ["bassa", "Incerta"]].map(function (c) {
+        return h("tr", null, h("th", null, c[1]), h("td", null, pct(s.by_confidence[c[0]])));
+      })));
+      body.appendChild(h("p", { class: "tiny muted" }, "Per titolo"));
+      body.appendChild(h("table", { class: "kv small" }, Object.keys(s.by_instrument).map(function (id) {
+        return h("tr", null, h("th", null, names[id] || id), h("td", null, pct(s.by_instrument[id])));
+      })));
+    });
+    return body;
+  }
+
   function aiUsageSection() {
     var sec = { body: h("div") };
     load("ai_usage.json").catch(function () { return null; }).then(function (u) {
@@ -759,7 +782,7 @@
           h("td", null, c ? (c.message || "") + " · ultimo successo " + (c.last_success ? L.fmtDate(c.last_success) : "mai") : "mai eseguito",
             c && c.errors && c.errors.length ? h("details", null, h("summary", null, c.errors.length + " errori"), h("ul", { class: "plain tiny" }, c.errors.map(function (e) { return h("li", null, (e.symbol || e.id || "") + ": " + e.error); }))) : null));
       }));
-      var advanced = [more("Stato degli aggiornamenti", stTable), more("Consumo AI", aiUsageSection())];
+      var advanced = [more("Stato degli aggiornamenti", stTable), more("Affidabilità delle previsioni", trackSection()), more("Consumo AI", aiUsageSection())];
       advanced.push(more("Fonti e limiti", h("ul", { class: "plain small" },
         h("li", null, "Prezzi: Yahoo Finance tramite la libreria non ufficiale yfinance. Dati ritardati, mai tempo reale; possibili buchi o errori."),
         h("li", null, "Notizie: Google News (per le azioni il nome della società; per gli ETF l'indice, il mercato e le principali partecipazioni) e i comunicati di BCE e Fed. Nessuno scraping, nessun aggiramento di paywall."),
