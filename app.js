@@ -118,16 +118,29 @@
         });
       }).then(function (runId) {
         return new Promise(function (resolve, reject) {
-          var started = Date.now();
-          (function poll() {
-            fetch(base + "/runs/" + runId, { headers: headers, cache: "no-store" }).then(function (r) { return r.json(); }).then(function (run) {
+          // Se si passa a un'altra app il telefono può congelare una richiesta in corso: ogni controllo ha un tempo
+          // massimo e, al ritorno nell'app, si ricontrolla subito.
+          var started = Date.now(), done = false, timer = null, busy = false;
+          function next(ms) { clearTimeout(timer); timer = setTimeout(poll, ms); }
+          function finish() { done = true; clearTimeout(timer); document.removeEventListener("visibilitychange", onShow); }
+          function onShow() { if (!document.hidden && !done) { busy = false; next(0); } }
+          document.addEventListener("visibilitychange", onShow);
+          function poll() {
+            if (done || busy) return;
+            busy = true;
+            var ctrl = window.AbortController ? new AbortController() : null;
+            var guard = setTimeout(function () { if (ctrl) ctrl.abort(); }, 15000);
+            fetch(base + "/runs/" + runId, { headers: headers, cache: "no-store", signal: ctrl ? ctrl.signal : undefined }).then(function (r) { return r.json(); }).then(function (run) {
+              clearTimeout(guard); busy = false;
+              if (done) return;
               var secs = Math.round((Date.now() - started) / 1000);
               toast(["Elaborazione su GitHub in corso (" + secs + " s)… ", link(run.html_url, "dettagli")], "info", true);
-              if (run.status === "completed") resolve(run);
-              else if (Date.now() - started > 15 * 60000) reject(new Error("Tempo scaduto: controlla l'esecuzione su GitHub."));
-              else setTimeout(poll, 5000);
-            }).catch(function () { setTimeout(poll, 8000); });
-          })();
+              if (run.status === "completed") { finish(); resolve(run); }
+              else if (Date.now() - started > 15 * 60000) { finish(); reject(new Error("Tempo scaduto: controlla l'esecuzione su GitHub.")); }
+              else next(5000);
+            }).catch(function () { clearTimeout(guard); busy = false; if (!done) next(5000); });
+          }
+          poll();
         });
       });
     },
