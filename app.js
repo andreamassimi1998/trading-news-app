@@ -531,17 +531,6 @@
     return holder;
   }
 
-  function clampText(text, cls) {
-    var p = h("p", { class: (cls || "") + " clamp" }, text);
-    var out = [p];
-    if ((text || "").length > 260) {
-      out.push(h("button", { type: "button", class: "linklike small", onclick: function (ev) {
-        ev.target.textContent = p.classList.toggle("clamp") ? "Leggi tutto" : "Riduci";
-      } }, "Leggi tutto"));
-    }
-    return out;
-  }
-
   var EXCHANGES = { LSX: "LS Exchange", GER: "Xetra", FRA: "Francoforte", MIL: "Milano", AMS: "Amsterdam", LSE: "Londra", PAR: "Parigi",
     NMS: "Nasdaq", NGM: "Nasdaq", NCM: "Nasdaq", NYQ: "New York", PCX: "New York" };
   /** "Prezzo delle 15:42 · Xetra · ritardo ~15 min" oppure "Chiusura del 29 ott · Xetra", con l'eventuale conversione. */
@@ -569,7 +558,7 @@
     s.appendChild(h("div", { class: "periods" }, [["1 settimana", m.d5], ["1 mese", m.m1], ["Quest'anno", m.ytd]].map(function (p) {
       return h("div", { class: "stat" }, h("div", { class: "tiny muted" }, p[0]), p[1] ? chg(p[1].pct) : h("span", { class: "muted" }, "—"));
     })));
-    if (a.in_breve) clampText(a.in_breve, "lead").forEach(function (n) { s.appendChild(n); });
+    if (a.in_breve) s.appendChild(h("p", { class: "lead" }, a.in_breve));
     return s;
   }
 
@@ -608,7 +597,7 @@
           h("div", { class: "fc-conf" },
             h("span", { class: "meter", "aria-hidden": "true" }, [1, 2, 3].map(function (i) { return h("i", { class: i <= lvl ? "on" : "" }); })),
             h("span", { class: "tiny muted" }, [d && SICUREZZA[p.fiducia], p.orizzonte].filter(Boolean).join(" · "))))));
-      if (p.spiegazione) clampText(p.spiegazione, "small").forEach(function (n) { s.body.appendChild(n); });
+      if (p.spiegazione) s.body.appendChild(h("p", { class: "small" }, p.spiegazione));
       if (p.fattori_chiave && p.fattori_chiave.length) {
         s.body.appendChild(h("div", { class: "keys" }, h("div", { class: "label" }, "Dipende soprattutto da"),
           h("ul", null, p.fattori_chiave.map(function (f) { return h("li", null, f.testo); }))));

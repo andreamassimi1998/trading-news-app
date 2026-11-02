@@ -38,7 +38,6 @@ p { margin: 6px 0; }
 .center { text-align: center; }
 .label { font-size: .78rem; color: var(--muted); font-weight: 600; margin-bottom: 4px; }
 .lead { font-size: .98rem; line-height: 1.6; color: var(--text-2); margin-top: 14px; }
-.clamp { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* intestazioni di pagina */
