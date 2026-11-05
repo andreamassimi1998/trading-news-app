@@ -174,24 +174,43 @@
   // Prezzi in diretta dal servizio su Cloudflare (LS Exchange, come Trade Republic): sostituiscono prezzo e variazione
   // di oggi dei dati di GitHub. Se il servizio non risponde in pochi secondi restano i dati di GitHub.
   var WORKER = ((document.querySelector('meta[name="pii-worker"]') || {}).content || "").replace(/\/$/, "");
-  var live = { at: 0, key: "", data: null };
+  var live = { at: 0, key: "", data: null, pending: null };
+  var LIVE_WAIT = 3000;  // la pagina aspetta i prezzi in diretta al massimo 3 s, poi si mostra con quelli salvati...
+  function fetchLive(key) {
+    if (live.pending && live.pending.key === key) return live.pending.p;
+    var ctrl = window.AbortController ? new AbortController() : null;
+    var guard = setTimeout(function () { if (ctrl) ctrl.abort(); }, 15000);
+    var p = fetch(WORKER + "/prices?isin=" + encodeURIComponent(key), { cache: "no-store", signal: ctrl ? ctrl.signal : undefined })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) {
+        clearTimeout(guard);
+        live.pending = null;
+        if (!j || !j.prices) return null;
+        var by = {};
+        j.prices.forEach(function (p) { if (p.price != null) by[p.isin] = p; });
+        live = { at: Date.now(), key: key, data: { fetched_at: j.fetched_at, by: by }, pending: null };
+        return live.data;
+      }).catch(function () { clearTimeout(guard); live.pending = null; return null; });
+    live.pending = { key: key, p: p };
+    return p;
+  }
   function livePrices(isins, fresh) {
     isins = isins.filter(Boolean);
     var key = isins.join(",");
     if (!WORKER || !isins.length) return Promise.resolve(null);
     if (!fresh && live.data && live.key === key && Date.now() - live.at < 60000) return Promise.resolve(live.data);
-    var ctrl = window.AbortController ? new AbortController() : null;
-    var guard = setTimeout(function () { if (ctrl) ctrl.abort(); }, 4000);
-    return fetch(WORKER + "/prices?isin=" + encodeURIComponent(key), { cache: "no-store", signal: ctrl ? ctrl.signal : undefined })
-      .then(function (r) { return r.ok ? r.json() : null; })
-      .then(function (j) {
-        clearTimeout(guard);
-        if (!j || !j.prices) return null;
-        var by = {};
-        j.prices.forEach(function (p) { if (p.price != null) by[p.isin] = p; });
-        live = { at: Date.now(), key: key, data: { fetched_at: j.fetched_at, by: by } };
-        return live.data;
-      }).catch(function () { clearTimeout(guard); return null; });
+    var p = fetchLive(key);
+    return new Promise(function (resolve) {
+      var waiting = true;
+      var timer = setTimeout(function () {
+        waiting = false;
+        resolve(null);
+        // ...e quando i prezzi in diretta arrivano la pagina si ridisegna da sola, se è ancora quella aperta
+        var hash = location.hash;
+        p.then(function (d) { if (d && location.hash === hash) route(); });
+      }, LIVE_WAIT);
+      p.then(function (d) { if (waiting) { clearTimeout(timer); waiting = false; resolve(d); } });
+    });
   }
   function romeDay(iso) { return new Date(iso).toLocaleDateString("en-CA", { timeZone: "Europe/Rome" }); }
   /** Riga della panoramica con prezzo e variazione in diretta (copia: i dati in cache restano quelli di GitHub). */
