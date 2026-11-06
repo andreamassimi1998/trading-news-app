@@ -72,6 +72,17 @@
     return fmtDate(iso, false);
   }
 
+  /** Quando è stato aggiornato qualcosa, in ora italiana: "oggi alle 12:49", "ieri alle 22:49", "giovedì 5 nov alle 22:49". */
+  function stamp(iso, now) {
+    var d = new Date(iso || "");
+    if (isNaN(d)) return "data non disponibile";
+    var day = function (x) { return x.toLocaleDateString("en-CA", { timeZone: "Europe/Rome" }); };
+    var n = now || new Date(), y = new Date(n.getTime() - 86400000);
+    var when = day(d) === day(n) ? "oggi" : day(d) === day(y) ? "ieri"
+      : d.toLocaleDateString("it-IT", { weekday: "long", timeZone: "Europe/Rome" }) + " " + fmtDay(day(d), n);
+    return when + " alle " + fmtTime(iso);
+  }
+
   /** Validazione ISIN (stessa logica del backend). */
   function isinOk(isin) {
     if (!/^[A-Z]{2}[A-Z0-9]{9}[0-9]$/.test(isin)) return false;
@@ -97,7 +108,7 @@
   }
 
   var api = { safeUrl: safeUrl, fmtPrice: fmtPrice, fmtPct: fmtPct,
-    trend: trend, fmtDate: fmtDate, fmtDay: fmtDay, fmtTime: fmtTime, timeAgo: timeAgo, isinOk: isinOk, sliceRange: sliceRange };
+    trend: trend, fmtDate: fmtDate, fmtDay: fmtDay, fmtTime: fmtTime, timeAgo: timeAgo, stamp: stamp, isinOk: isinOk, sliceRange: sliceRange };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.PII = api;
 })(typeof window !== "undefined" ? window : globalThis);
