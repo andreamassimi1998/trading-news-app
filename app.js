@@ -885,4 +885,13 @@
   }
   checkUpdate();
   document.addEventListener("visibilitychange", function () { if (!document.hidden) checkUpdate(); });
+
+  // Tornando nell'app dopo più di un minuto, i prezzi in diretta si rileggono da soli: la pagina resta com'è finché
+  // non arrivano i nuovi, poi cambiano solo i numeri (lista dei titoli e scheda di un titolo).
+  document.addEventListener("visibilitychange", function () {
+    var h = location.hash || "#/";
+    if (document.hidden || !WORKER || !live.key || Date.now() - live.at < 60000) return;
+    if (h !== "#/" && h.indexOf("#/strumento/") !== 0) return;
+    fetchLive(live.key).then(function (d) { if (d && (location.hash || "#/") === h) route(); });
+  });
 })();
