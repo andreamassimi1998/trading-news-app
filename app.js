@@ -782,11 +782,12 @@
       out.push(h("p", { class: "small" }, modeTxt));
 
       var comps = (status && status.components) || {};
-      var NAMES = { prices: "Prezzi", events: "Eventi", funds: "Dati ETF", news: "Notizie", analysis: "Analisi" };
+      var NAMES = { prices: "Prezzi", events: "Eventi", funds: "Dati ETF", news: "Notizie", market: "Oggi sui mercati", translations: "Traduzioni", analysis: "Previsioni" };
+      var STATES = { ok: "OK", partial: "Parziale", error: "Errore", skipped: "Saltato", waiting: "In attesa" };
       var stTable = h("table", { class: "kv small" }, Object.keys(NAMES).map(function (k) {
         var c = comps[k];
         return h("tr", null, h("th", null, NAMES[k]),
-          h("td", null, c ? badge(c.status, "st-" + c.status) : "—"),
+          h("td", null, c ? badge(STATES[c.status] || c.status, "st-" + c.status) : "—"),
           h("td", null, c ? (c.message || "") + " · ultimo successo " + (c.last_success ? L.fmtDate(c.last_success) : "mai") : "mai eseguito",
             c && c.errors && c.errors.length ? h("details", null, h("summary", null, c.errors.length + " errori"), h("ul", { class: "plain tiny" }, c.errors.map(function (e) { return h("li", null, (e.symbol || e.id || "") + ": " + e.error); }))) : null));
       }));

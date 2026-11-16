@@ -83,7 +83,7 @@ p { margin: 6px 0; }
 .badge.demo { background: var(--demo); color: #fff; }
 .badge.ok, .badge.st-ok { background: var(--up-soft); color: var(--up); }
 .badge.st-error { background: var(--down-soft); color: var(--down); }
-.badge.st-partial, .badge.warn { background: var(--warn-bg); }
+.badge.st-partial, .badge.st-waiting, .badge.warn { background: var(--warn-bg); }
 .banner { border-radius: 12px; padding: 10px 12px; margin: 8px 0; font-size: .9rem; }
 .banner.demo { background: var(--demo); color: #fff; }
 .banner.warn { background: var(--warn-bg); border: 1px solid var(--warn-line); }
