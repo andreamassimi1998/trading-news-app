@@ -615,7 +615,8 @@
         h("div", null, h("div", { class: "fc-title" }, d ? "Previsione " + d[1] : "Previsione incerta"),
           h("div", { class: "fc-conf" },
             h("span", { class: "meter", "aria-hidden": "true" }, [1, 2, 3].map(function (i) { return h("i", { class: i <= lvl ? "on" : "" }); })),
-            h("span", { class: "tiny muted" }, [d && SICUREZZA[p.fiducia], p.orizzonte].filter(Boolean).join(" · "))))));
+            h("span", { class: "tiny muted" }, [d && SICUREZZA[p.fiducia], d && p.affidabilita != null ? "affidabilità " + Math.round(p.affidabilita * 100) + "%" : null,
+              p.orizzonte].filter(Boolean).join(" · "))))));
       if (p.spiegazione) s.body.appendChild(h("p", { class: "small" }, p.spiegazione));
       if (p.fattori_chiave && p.fattori_chiave.length) {
         s.body.appendChild(h("div", { class: "keys" }, h("div", { class: "label" }, "Dipende soprattutto da"),
@@ -748,10 +749,40 @@
       body.appendChild(h("table", { class: "kv small" }, [["alta", "Più sicura"], ["media", "Abbastanza sicura"], ["bassa", "Incerta"]].map(function (c) {
         return h("tr", null, h("th", null, c[1]), h("td", null, pct(s.by_confidence[c[0]])));
       })));
+      if (s.by_reliability && Object.keys(s.by_reliability).some(function (k) { return s.by_reliability[k].totale; })) {
+        body.appendChild(h("p", { class: "tiny muted" }, "Affidabilità dichiarata e risultato reale"));
+        body.appendChild(h("table", { class: "kv small" }, Object.keys(s.by_reliability).map(function (k) {
+          return h("tr", null, h("th", null, "Affidabilità " + k), h("td", null, pct(s.by_reliability[k])));
+        })));
+      }
       body.appendChild(h("p", { class: "tiny muted" }, "Per titolo"));
       body.appendChild(h("table", { class: "kv small" }, Object.keys(s.by_instrument).map(function (id) {
         return h("tr", null, h("th", null, names[id] || id), h("td", null, pct(s.by_instrument[id])));
       })));
+    });
+    return body;
+  }
+
+  // Quanto spesso ogni dato ha indovinato la direzione a 2 settimane (data/factor_model.json, calcolato senza AI)
+  function factorsSection() {
+    var body = h("div");
+    load("factor_model.json").catch(function () { return null; }).then(function (m) {
+      var r = m && m.riepilogo;
+      if (!r) { body.appendChild(h("p", { class: "small muted" }, "Disponibile dopo il prossimo aggiornamento delle previsioni.")); return; }
+      body.appendChild(h("p", { class: "small" }, "Quante volte ogni dato ha indovinato la direzione a 2 settimane. "
+        + "Vicino al 50% = non serve (pesa zero); i dati delle notizie e di Gemini imparano dalle previsioni verificate."));
+      [["azione", "Azioni"], ["etf", "ETF"]].forEach(function (g) {
+        var x = r[g[0]];
+        if (!x) return;
+        var keys = Object.keys(x.fattori).sort(function (a, b) { return Math.abs(x.fattori[b].indovina - 0.5) - Math.abs(x.fattori[a].indovina - 0.5); });
+        body.appendChild(h("p", { class: "tiny muted" }, g[1]));
+        var rows = keys.map(function (k) {
+          var f = x.fattori[k];
+          return h("tr", null, h("th", null, f.nome), h("td", null, Math.round(f.indovina * 100) + "%"));
+        });
+        if (!x.fattori.notizie) rows.push(h("tr", null, h("th", null, "Tono delle notizie"), h("td", { class: "muted" }, "in apprendimento")));
+        body.appendChild(h("table", { class: "kv small" }, rows));
+      });
     });
     return body;
   }
@@ -791,7 +822,7 @@
           h("td", null, c ? (c.message || "") + " · ultimo successo " + (c.last_success ? L.fmtDate(c.last_success) : "mai") : "mai eseguito",
             c && c.errors && c.errors.length ? h("details", null, h("summary", null, c.errors.length + " errori"), h("ul", { class: "plain tiny" }, c.errors.map(function (e) { return h("li", null, (e.symbol || e.id || "") + ": " + e.error); }))) : null));
       }));
-      var advanced = [more("Stato degli aggiornamenti", stTable), more("Affidabilità delle previsioni", trackSection()), more("Consumo AI", aiUsageSection())];
+      var advanced = [more("Stato degli aggiornamenti", stTable), more("Affidabilità delle previsioni", trackSection()), more("Quali dati funzionano", factorsSection()), more("Consumo AI", aiUsageSection())];
       advanced.push(more("Fonti e limiti", h("ul", { class: "plain small" },
         h("li", null, "Prezzi: Yahoo Finance tramite la libreria non ufficiale yfinance. Dati ritardati, mai tempo reale; possibili buchi o errori."),
         h("li", null, "Notizie: Google News (per le azioni il nome della società; per gli ETF l'indice, il mercato e le principali partecipazioni) e i comunicati di BCE e Fed. Nessuno scraping, nessun aggiramento di paywall."),
